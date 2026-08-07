@@ -177,6 +177,11 @@ public:
         xt::xarray<double> loss_gradient = loss_calc_->compute_gradient(predicted, expected);
         std::vector<xt::xarray<double>> current_gradients = {loss_gradient};
 
+        //Check the output
+        if(!output_) {
+            throw invalid_config("No previous output found- must call forward pass prior to using backwards pass");
+        }
+
         //Initialize the current output
         std::shared_ptr<Tensor> current_result = output_;
         
@@ -184,12 +189,14 @@ public:
         if(!current_result) {
             throw invalid_config("The network's forward method must be called prior to computing a backwards pass");
         }
-        std::cout << *current_result << std::endl;
+        // std::cout << *current_result << std::endl;
 
         //Cycle through each node and operator, backwards
         while(current_result != nullptr && current_result->prev_operator_ != nullptr) {
-            std::cout << *current_result << std::endl;
+            // std::cout << *current_result << std::endl;
             std::shared_ptr<TensorOperator> current_operator = current_result->prev_operator_; 
+
+            // std::cout << current_operator->name() << std::endl;
             
             //Pass loss/gradients backward through operator (the operators are what contain the weights)
             current_gradients = current_operator->compute_backwards_pass(current_gradients);
@@ -203,7 +210,6 @@ public:
             }
         }
 
-        output_.reset();
     }
 
 
@@ -215,7 +221,8 @@ public:
             throw invalid_config("Must enable the network prior to optimizing"); 
         }
 
-        optimizer_->step(operators_);
+        optimizer_->step(operators_, true);
+        output_.reset();
     }
 
 };

@@ -12,6 +12,7 @@ int main() {
 
   //(2,4) -> (4,1)
   net.add_operator(make_shared<Linear1d>(2, 4));
+  net.add_operator(make_shared<Sigmoid>());
   net.add_operator(make_shared<Linear1d>(4, 1));
 
   shared_ptr<MeanSquaredError> loss_calc = make_shared<MeanSquaredError>();
@@ -38,13 +39,19 @@ int main() {
 
   for(int32_t e = 0; e < 1000; e++) {
 
+    double total_loss = 0;
+
     for(int32_t i = 0; i < inputs.size(); i++) {
       xarray<double> predicted = net.forward(inputs[i]);
+      total_loss += loss_calc->compute(predicted, expected_outputs[i]);
       net.backward(predicted, expected_outputs[i]);
+      // cout << "Backwards" << endl;
       net.optimize();
     }
 
-    
+    if(e % 100 == 0) {
+      cout << "Total loss: " << total_loss << endl;
+    }
   }
 }
 

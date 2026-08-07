@@ -111,7 +111,7 @@ public:
                 //param = param - v
                 params[i] -= vels[i];
 
-                std::cout << "params updated to " << params[i] << std::endl;
+                // std::cout << "params updated to " << params[i] << std::endl;
                 
                 //set gradients to 0
                 if(zero_grad) {

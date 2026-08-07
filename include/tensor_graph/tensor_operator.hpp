@@ -28,11 +28,6 @@ protected:
      * Pointers to all tensors that are computed, just prior to this operator receiving them
      */
     std::vector<std::shared_ptr<Tensor>> predecessors_ = {};
-
-    /**
-    * Tensors (as type `xt::array`) before this operation was applied
-    */
-    std::vector<xt::xarray<double>> prev_inputs_;
     
 
     /**
@@ -114,7 +109,7 @@ public:
     /**
      * @return identifying string of this operator
      */
-    virtual std::string name();
+    virtual std::string name() const;
 
     /**
      * Properly destroys a tensor operator

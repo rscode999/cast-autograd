@@ -9,14 +9,6 @@ namespace cast {
 
 
 
-std::vector<xt::xarray<double>> TensorOperator::input_tensors() const {
-    return input_tensors_;
-}
-
-
-std::vector<xt::xarray<double>> TensorOperator::output_tensors() const {
-    return output_tensors_;
-}
 
 
 int32_t TensorOperator::n_inputs() const {
@@ -76,7 +68,7 @@ std::vector<std::shared_ptr<Tensor>> TensorOperator::compute_and_link(std::vecto
 
 
 
-std::string TensorOperator::name() {
+std::string TensorOperator::name() const {
     return "TensorOperator";
 }
 

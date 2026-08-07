@@ -21,31 +21,58 @@ namespace cast {
 * Sigmoid activation function
 */
 class Sigmoid : public TensorOperator {
+private:
+    /**
+    * Outputs from the last Sigmoid computation.
+    *
+    * Makes calculation of the backwards pass easier.
+    */
+    std::vector<xt::xarray<double>> prev_outputs_;
+
 public:
+
+    /**
+    * Creates a new Sigmoid object
+    */
+    Sigmoid() {
+    }
+
+    /**
+    * 
+    */
+    std::string name() const override {
+        return "sigmoid";
+    }
+
     /**
     * Computes the Sigmoid activation function on each parameter in `inputs`
     */
     std::vector<xt::xarray<double>> compute(std::vector<xt::xarray<double>> inputs) override {
-        //store previous inputs
-        prev_inputs_ = inputs;
 
         std::vector<xt::xarray<double>> output = {};
         for(xt::xarray<double> params : inputs) {
             output.push_back( 1 / (1 + exp(-params)) );
         }
+
+        prev_outputs_ = output;
         return output;
     }
 
+    /**
+    * Computes the gradient of Sigmoid for each parameter of `upstream_gradients`
+    */
     std::vector<xt::xarray<double>> compute_backwards_pass(std::vector<xt::xarray<double>> upstream_gradients) override {
-        std::vector<xt::xarray<double>> output = compute(upstream_gradients);
+        std::vector<xt::xarray<double>> output;
+        output.resize(upstream_gradients.size());
+
         // sigmoid(x) * (1.0 - sigmoid(x));
-        for(xt::xarray<double> grad : output) {
-            output.push_back( grad * (1.0 - grad) );
+        for(int32_t i = 0; i < (int32_t)upstream_gradients.size(); i++) {
+            output[i] = upstream_gradients[i] * prev_outputs_[i] * (1 - prev_outputs_[i]);
         }
         return output;
     }
 };
-    
+
 
 /**
 * Layer in a network. Contains parameters and gradients for each parameter.
@@ -75,8 +102,17 @@ protected:
     */
     std::vector<xt::xarray<double>> gradients_;
 
+    /**
+    * Tensors (as type `xt::array`) before this operation was applied
+    */
+    std::vector<xt::xarray<double>> prev_inputs_;
+
 
 public:
+
+    virtual std::string name() const override {
+        return "layer";
+    }
 
     /**
     * @return parameters (weights, biases, ...) of this layer, as a std::vector
@@ -163,6 +199,10 @@ public:
     }
 
 
+
+    std::string name() const override {
+        return "linear1d";
+    }
 
     /**
     * Returns the result of the forward pass on its input
