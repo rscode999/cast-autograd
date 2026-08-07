@@ -1,4 +1,4 @@
-# CAST (C++ Autograd System with Tensors)
+# CAST (Compartmentalized Autograd System with Tensors)
 *CNet 2.0*  
 **C++ framework for neural networks**
 
@@ -11,3 +11,5 @@ Design Goals
 - Use architecture where the network is the central object. All operations can be done through a network.
     - Ideally, CNet's 3 main operations (forward, predict, backward/reverse) are called as network methods
     - So far, this goal seems possible only if layers are added sequentially
+
+NOTE: If you want to use clangd, ensure VS Build Tools (with C++ optional functionality) is installed

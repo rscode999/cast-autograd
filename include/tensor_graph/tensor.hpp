@@ -1,7 +1,9 @@
 #ifndef CAST_TENSOR_
 #define CAST_TENSOR_
 
+#include <ostream>
 #include <xtensor/containers/xarray.hpp>
+#include <xtensor/io/xio.hpp>
 
 namespace cast {
 
@@ -26,45 +28,55 @@ private:
      */
     xt::xarray<double> data_;
 
-    /**
-     * Gradients of the data stored in the node
-     */
-    xt::xarray<double> gradients_;
-
-    /**
-    * Creates a new Tensor. All fields are uninitialized.
-    * 
-    * Private constructor, for use in a `TensorOperator` base class.
-    */
-    Tensor() = default;
-
 
 public:
     friend class TensorOperator;
+    friend class CustomNetwork;
+    friend class Network;
 
 
     /**
-     * Creates a new tensor containing `input`.
+     * Creates a new tensor containing `initial_data`.
      * 
      * The tensor has no registered previous operators.
      * Gradients are all 1's.
+     *
+     * @param initial_data tensor data to store
      */
-    Tensor(xt::xarray<double> input) : data_(input) {
-        gradients_ = xt::ones_like(input);
+    Tensor(xt::xarray<double> initial_data) : data_(initial_data) {
+        prev_operator_ = nullptr;
     }
 
     /**
      * @return tensor data inside this object
      */
-     xt::xarray<double> data() const noexcept;
+     xt::xarray<double> data() const;
+
+     /**
+     * Sets the data contents of this tensor to `new_data`.
+     * @param new_data data to set
+     */
+    void set_data(xt::xarray<double> new_data);
 
     /**
-     * @return gradient of the data inside this node
+     * Exports `t` to `output_stream`, returning a reference to `output_stream` with `t` inside.
+     * 
+     * Gives the tensor's data only.
+     * 
+     * @param output_stream stream to send the list into
+     * @param t tensor to export
+     * @return reference to `output_stream` with `t` inside
      */
-     xt::xarray<double> gradients() const noexcept;
-
+    template<typename CharT, typename Traits>
+    friend std::basic_ostream<CharT, Traits>& operator<<(std::basic_ostream<CharT, Traits>& output_stream, const Tensor& t);
 };
 
+
+template<typename CharT, typename Traits>
+std::basic_ostream<CharT, Traits>& operator<<(std::basic_ostream<CharT, Traits>& output_stream, const Tensor& t) {
+    output_stream << t.data_;
+    return output_stream;
+}
 
 
 

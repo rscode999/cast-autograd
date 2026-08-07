@@ -28,7 +28,8 @@ public:
      * Creates a new exception object with the message `msg`
      * @param msg error message to be displayed on throw
      */
-    explicit invalid_config(std::string msg = "") : message(std::move(msg)) {
+    explicit invalid_config(std::string msg = "") : std::exception() {
+        message = msg;
     }
 
     /**

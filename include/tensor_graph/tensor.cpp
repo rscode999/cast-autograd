@@ -6,16 +6,14 @@ namespace cast {
 
 
 
-xt::xarray<double> Tensor::data() const noexcept {
+xt::xarray<double> Tensor::data() const {
     return data_;
 }
 
 
-xt::xarray<double> Tensor::gradients() const noexcept {
-    return gradients_;
+void Tensor::set_data(xt::xarray<double> new_data) {
+    data_ = new_data;
 }
-
-
 
 
 }

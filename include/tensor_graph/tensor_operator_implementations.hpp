@@ -1,73 +1,208 @@
 #ifndef CAST_TENSOR_OPERATOR_IMPLEMENTATIONS_
 #define CAST_TENSOR_OPERATOR_IMPLEMENTATIONS_
 
+#include "tensor.hpp"
 #include "tensor_operator.hpp"
-#include "../cast_exceptions.hpp"
 
 #include <xtensor/containers/xarray.hpp>
 #include <xtensor/generators/xrandom.hpp>
 #include <xtensor-blas/xlinalg.hpp>
 
 #include <cassert>
+#include <cmath>
 #include <cstdint>
 
 
 namespace cast {
 
+
+
+/**
+* Sigmoid activation function
+*/
+class Sigmoid : public TensorOperator {
+public:
+    /**
+    * Computes the Sigmoid activation function on each parameter in `inputs`
+    */
+    std::vector<xt::xarray<double>> compute(std::vector<xt::xarray<double>> inputs) override {
+        //store previous inputs
+        prev_inputs_ = inputs;
+
+        std::vector<xt::xarray<double>> output = {};
+        for(xt::xarray<double> params : inputs) {
+            output.push_back( 1 / (1 + exp(-params)) );
+        }
+        return output;
+    }
+
+    std::vector<xt::xarray<double>> compute_backwards_pass(std::vector<xt::xarray<double>> upstream_gradients) override {
+        std::vector<xt::xarray<double>> output = compute(upstream_gradients);
+        // sigmoid(x) * (1.0 - sigmoid(x));
+        for(xt::xarray<double> grad : output) {
+            output.push_back( grad * (1.0 - grad) );
+        }
+        return output;
+    }
+};
     
+
+/**
+* Layer in a network. Contains parameters and gradients for each parameter.
+*/
+class Layer : public TensorOperator {
+protected:
+
+    /**
+    * Rank of the inputs taken by this layer. 1=vector, 2=matrix, 3=3d tensor, etc.
+    */
+    int32_t input_tensor_rank_;
+
+    /**
+    * Rank of the outputs taken by this layer. 1=vector, 2=matrix, 3=3d tensor, etc.
+    */
+    int32_t output_tensor_rank_;
+
+
+    /**
+    * Parameters of the layer. Each index has a specialized role (i.e. weight matrix, bias vector)
+    */
+    std::vector<xt::xarray<double>> parameters_;
+
+    /**
+    * Gradients of each tensor in the `parameters_` list.
+    * Index `i` corresponds to the gradients of `parameters_[i]`.
+    */
+    std::vector<xt::xarray<double>> gradients_;
+
+
+public:
+
+    /**
+    * @return parameters (weights, biases, ...) of this layer, as a std::vector
+    */
+   std::vector<xt::xarray<double>>& parameters() {
+        return parameters_;
+   }
+
+    /**
+    * @return gradients of the weights, biases, etc. of this layer, as a std::vector
+    */
+   std::vector<xt::xarray<double>>& gradients() {
+        return gradients_;
+   }
+};
 
 
 
 /**
 * Performs a fully-connected dense linear operation on 1d vectors. Produces a 1d vector.
 */
-class Linear1d : public TensorOperator {
+class Linear1d : public Layer {
 private:
     /**
-    * Required size of input vectors
+    * Names of indices: Weights=0, Biases=1
     */
-    int32_t input_dimension_;
+    enum ParameterIndices {
+        /**
+        * Index 0 of parameters and gradients = 2d weight matrix
+        */
+        Weights = 0,
 
-    /**
-    * Size of vectors coming from the linear forward operation
-    */
-    int32_t output_dimension_;
+        /**
+        * Index 1 of parameters and gradients = 1d bias vector
+        */
+        Biases = 1
+    };
+
     
     /**
-    * 2d weight matrix
+    * Required size of 1d input vectors
     */
-    xt::xarray<double> weights_;
+    int32_t input_vector_dimension_;
 
     /**
-    * 1d bias vector
+    * Size of 1d vectors coming from the linear forward operation
     */
-    xt::xarray<double> biases_;
-
+    int32_t output_vector_dimension_;
 
 public:
     /**
-    * Creates a 1d linear layer with `input_dimension` inputs and `output_dimension` outputs
+    * Creates a 1d linear layer with `input_dimension` inputs and `output_dimension` outputs.
+    *
+    * Weights and biases are randomly initialized, using a normal distribution with mean 0 and std. dev. 1.
+    * Gradients are initialized to zeros.
+    * 
     * @param input_dimension required size of input vectors. Precondition: Positive
     * @param output_dimension size of output vectors. Precondition: Positive
     */
-    Linear1d(int32_t input_dimension, int32_t output_dimension) : input_dimension_(input_dimension), output_dimension_(output_dimension) {
+    Linear1d(int32_t input_dimension, int32_t output_dimension) 
+    : 
+    input_vector_dimension_(input_dimension), output_vector_dimension_(output_dimension) {
         assert(input_dimension > 0);
         assert(output_dimension > 0);
-        weights_ = xt::random::randn<double>({output_dimension, input_dimension}, 0, 1);
-        biases_ = xt::random::randn<double>({output_dimension}, 0, 1);
+        
+        //Exclusively uses inputs and outputs of rank 1 (vectors).
+        input_tensor_rank_ = 1;
+        output_tensor_rank_ = 1;
+        
+        //PARAMETERS (weights, biases)
+        //index 0 = weight matrix
+        parameters_.push_back(xt::random::randn<double>({output_dimension, input_dimension}, 0, 1));
+        //index 1 = bias vector
+        parameters_.push_back(xt::random::randn<double>({output_dimension}, 0, 1));
+
+        //GRADIENTS
+        //index 0 = weight matrix
+        gradients_.push_back(xt::zeros<double>({output_dimension, input_dimension}));
+        //index 1 = bias vector
+        gradients_.push_back(xt::zeros<double>({output_dimension}));
+
+        //PREV INPUT
+        prev_inputs_.push_back(xt::zeros<double>({input_dimension}));
     }
+
+
 
     /**
     * Returns the result of the forward pass on its input
     */
-    xt::xarray<double> compute(xt::xarray<double> input) const override {
-        assert(input.dimension() == 1 && "Input must be a vector");
-        assert(input.size() == input_dimension_ && "Input tensor must have dimension matching the layer's input dimension");
-        return xt::linalg::dot(weights_, input) + biases_;
+    std::vector<xt::xarray<double>> compute(std::vector<xt::xarray<double>> input) override {
+        assert(input.size() == 1 && "Linear1d forward pass comptation has one input");
+
+        prev_inputs_[0] = input[0];
+
+        xt::xarray<double> input_tensor = input[0];
+        assert(input_tensor.dimension() == 1 && "Input must be a vector");
+        assert(input_tensor.size() == input_vector_dimension_ && "Input tensor must have dimension matching the layer's input dimension");
+
+        xt::xarray<double> output_tensor = xt::linalg::dot(parameters_[Weights], input_tensor) + parameters_[Biases];
+        return {output_tensor};
     }
 
-    xt::xarray<double> compute_backwards_pass(xt::xarray<double> input) const override {
-        throw not_implemented();
+
+
+    /**
+    * Returns the gradients with respect to this layer and `upstream_gradients`, updating this layer's gradients.
+    * @param upstream_gradients gradients from this layer's successor. Precondition: contains a single 1d vector
+    * @return dY/dL, where Y is the overall derivative and L is this layer's data, contained in index 0 of the output
+    */
+    std::vector<xt::xarray<double>> compute_backwards_pass(std::vector<xt::xarray<double>> upstream_gradients) override {
+        assert(upstream_gradients.size() == 1 && "Linear1d backwards operation must have one input");
+
+        xt::xarray<double> d_output = upstream_gradients[0];
+
+        //dW incremented by: d_output * transpose of prev. input
+        gradients_[Weights] += xt::view(d_output, xt::all(), xt::newaxis()) * xt::view(prev_inputs_[0], xt::newaxis(), xt::all());
+
+        //dB incremented by d_output
+        gradients_[Biases] += d_output;
+
+        //d_Input = transpose of weights * d_output, to next layer
+        xt::xarray<double> d_input = xt::linalg::dot(xt::transpose(parameters_[Weights]), d_output);
+
+        // Return the gradient vector for the previous layer
+        return {d_input};
     }
 };
 

@@ -1,6 +1,17 @@
+CompileFlags:
+  Add:
+    - -std=c++20
+    - -fparse-all-comments
+    - -Ilib/xtensor/include
+    - -Ilib/xtensor-blas/include
+    - -Ilib/xtl/include
+
 Hover:
   ShowAKA: No
 
 Documentation:
   CommentFormat: Doxygen
+
+Diagnostics:
+  UnusedIncludes: None
 
