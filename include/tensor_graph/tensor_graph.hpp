@@ -2,6 +2,6 @@
 #define CAST_TENSOR_GRAPH_
 
 #include "tensor.hpp"
-#include "tensor_operator_implementations.hpp"
+#include "tensor_operator.hpp"
 
 #endif 

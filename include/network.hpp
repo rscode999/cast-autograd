@@ -3,6 +3,7 @@
 
 
 #include "cast_exceptions.hpp"
+#include "activation_function.hpp"
 #include "loss_calculator.hpp"
 #include "optimizer.hpp"
 #include "tensor_graph/tensor_graph.hpp"

@@ -1,77 +1,17 @@
-#ifndef CAST_TENSOR_OPERATOR_IMPLEMENTATIONS_
-#define CAST_TENSOR_OPERATOR_IMPLEMENTATIONS_
+#ifndef CAST_LAYER_
+#define CAST_LAYER_
 
-#include "tensor.hpp"
-#include "tensor_operator.hpp"
+#include "tensor_graph/tensor_graph.hpp"
 
 #include <xtensor/containers/xarray.hpp>
 #include <xtensor/generators/xrandom.hpp>
 #include <xtensor-blas/xlinalg.hpp>
 
 #include <cassert>
-#include <cmath>
-#include <cstdint>
-
 
 namespace cast {
 
 
-
-/**
-* Sigmoid activation function
-*/
-class Sigmoid : public TensorOperator {
-private:
-    /**
-    * Outputs from the last Sigmoid computation.
-    *
-    * Makes calculation of the backwards pass easier.
-    */
-    std::vector<xt::xarray<double>> prev_outputs_;
-
-public:
-
-    /**
-    * Creates a new Sigmoid object
-    */
-    Sigmoid() {
-    }
-
-    /**
-    * 
-    */
-    std::string name() const override {
-        return "sigmoid";
-    }
-
-    /**
-    * Computes the Sigmoid activation function on each parameter in `inputs`
-    */
-    std::vector<xt::xarray<double>> compute(std::vector<xt::xarray<double>> inputs) override {
-
-        std::vector<xt::xarray<double>> output = {};
-        for(xt::xarray<double> params : inputs) {
-            output.push_back( 1 / (1 + exp(-params)) );
-        }
-
-        prev_outputs_ = output;
-        return output;
-    }
-
-    /**
-    * Computes the gradient of Sigmoid for each parameter of `upstream_gradients`
-    */
-    std::vector<xt::xarray<double>> compute_backwards_pass(std::vector<xt::xarray<double>> upstream_gradients) override {
-        std::vector<xt::xarray<double>> output;
-        output.resize(upstream_gradients.size());
-
-        // sigmoid(x) * (1.0 - sigmoid(x));
-        for(int32_t i = 0; i < (int32_t)upstream_gradients.size(); i++) {
-            output[i] = upstream_gradients[i] * prev_outputs_[i] * (1 - prev_outputs_[i]);
-        }
-        return output;
-    }
-};
 
 
 /**
@@ -248,5 +188,6 @@ public:
 
 
 
+
 }
-#endif
+#endif 

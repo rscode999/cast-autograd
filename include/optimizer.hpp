@@ -1,9 +1,10 @@
 #ifndef CAST_OPTIMIZER_
 #define CAST_OPTIMIZER_
 
-#include "tensor_graph/tensor_graph.hpp"
-#include "xtensor/generators/xbuilder.hpp"
 
+#include "layer.hpp"
+
+#include <xtensor/generators/xbuilder.hpp>
 #include <xtensor/io/xio.hpp>
 
 #include <iostream>
