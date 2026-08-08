@@ -76,7 +76,7 @@ public:
             if (layer != nullptr) {
                 // It is a layer: initialize velocities for its parameters
                 for (const Tensor& param : layer->parameters()) {
-                    layer_vels.push_back(xt::zeros_like(param.data_deepcopy()));
+                    layer_vels.push_back(xt::zeros_like(param.data()));
                 }
             }
 

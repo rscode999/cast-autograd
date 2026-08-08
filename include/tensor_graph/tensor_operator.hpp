@@ -29,6 +29,10 @@ protected:
      */
     std::vector<std::shared_ptr<Tensor>> predecessors_ = {};
     
+    /**
+    * Pointers to all tensors after computation by this operator
+    */
+    std::vector<std::shared_ptr<Tensor>> successors_ = {};
 
     /**
     * Number of inputs allowed by this operation

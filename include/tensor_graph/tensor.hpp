@@ -48,21 +48,15 @@ public:
     }
 
     /**
-     * @return deep copy of tensor data inside this object
+     * @return const reference to tensor data inside this object
      */
-     xt::xarray<double> data_deepcopy() const;
+    const xt::xarray<double>& data() const;
 
     /**
      * @return (mutable reference to) tensor data inside this object
      */
      xt::xarray<double>& data();
 
-
-     /**
-     * Sets the data contents of this tensor to `new_data`.
-     * @param new_data data to set
-     */
-    void set_data(xt::xarray<double> new_data);
 
     /**
      * Exports `t` to `output_stream`, returning a reference to `output_stream` with `t` inside.

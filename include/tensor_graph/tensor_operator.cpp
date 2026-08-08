@@ -63,6 +63,7 @@ std::vector<std::shared_ptr<Tensor>> TensorOperator::compute_and_link(std::vecto
     //     std::cout << n_ptr->prev_operator_->name() << std::endl;
     // }
 
+    successors_ = output_node_ptrs;
     return output_node_ptrs;
 }
 

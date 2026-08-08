@@ -171,11 +171,11 @@ public:
         // dW incremented by: d_output * transpose of prev. input
         xt::xarray<double> new_weight_grads = gradients_[Weights].data() + 
             (xt::view(d_output, xt::all(), xt::newaxis()) * xt::view(prev_inputs_[0].data(), xt::newaxis(), xt::all()));
-        gradients_[Weights].set_data(new_weight_grads);
+        gradients_[Weights].data() = new_weight_grads;
 
         // dB incremented by d_output
         xt::xarray<double> new_bias_grads = gradients_[Biases].data() + d_output;
-        gradients_[Biases].set_data(new_bias_grads);
+        gradients_[Biases].data() = new_bias_grads;
 
         // d_Input = transpose of weights * d_output, to next layer
         xt::xarray<double> d_input = xt::linalg::dot(xt::transpose(parameters_[Weights].data()), d_output);
