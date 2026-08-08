@@ -75,8 +75,8 @@ public:
             
             if (layer != nullptr) {
                 // It is a layer: initialize velocities for its parameters
-                for (const auto& param : layer->parameters()) {
-                    layer_vels.push_back(xt::zeros_like(param));
+                for (const Tensor& param : layer->parameters()) {
+                    layer_vels.push_back(xt::zeros_like(param.data_deepcopy()));
                 }
             }
 
@@ -95,28 +95,28 @@ public:
 
         for (int32_t l = 0; l < (int32_t)operators.size(); l++) {
             // Check if this operator is a subclass of Layer. If not, skip it
-            auto current_layer = std::dynamic_pointer_cast<Layer>(operators[l]);
+            std::shared_ptr<Layer> current_layer = std::dynamic_pointer_cast<Layer>(operators[l]);
             if(current_layer == nullptr) {
                 continue;
             }
 
-            auto& params = current_layer->parameters();
-            auto& grads = current_layer->gradients();
-            auto& vels = velocities_[l];
+            std::vector<Tensor>& params = current_layer->parameters();
+            std::vector<Tensor>& grads = current_layer->gradients();
+            std::vector<xt::xarray<double>>& vels = velocities_[l];
 
             // Do SGD update on each of the layer's parameters
             for(int32_t i = 0; i < current_layer->parameters().size(); i++) {
                 //v = momentum * v + learning_rate * gradient
-                vels[i] = momentum_coefficient_ * vels[i] + learning_rate_ * grads[i];
+                vels[i] = momentum_coefficient_ * vels[i] + learning_rate_ * grads[i].data();
 
                 //param = param - v
-                params[i] -= vels[i];
+                params[i].data() -= vels[i];
 
                 // std::cout << "params updated to " << params[i] << std::endl;
                 
                 //set gradients to 0
                 if(zero_grad) {
-                    current_layer->gradients() [i] = xt::zeros_like(current_layer->gradients() [i]);
+                    current_layer->gradients() [i] = Tensor(xt::zeros_like(current_layer->gradients() [i].data()));
                 }
             }
         }

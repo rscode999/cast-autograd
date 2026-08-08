@@ -48,9 +48,15 @@ public:
     }
 
     /**
-     * @return tensor data inside this object
+     * @return deep copy of tensor data inside this object
      */
-     xt::xarray<double> data() const;
+     xt::xarray<double> data_deepcopy() const;
+
+    /**
+     * @return (mutable reference to) tensor data inside this object
+     */
+     xt::xarray<double>& data();
+
 
      /**
      * Sets the data contents of this tensor to `new_data`.

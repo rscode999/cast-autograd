@@ -25,22 +25,22 @@ int32_t TensorOperator::n_outputs() const {
 std::vector<std::shared_ptr<Tensor>> TensorOperator::compute_and_link(std::vector<std::shared_ptr<Tensor>> inputs) {
     predecessors_.clear();
 
-    std::vector<xt::xarray<double>> input_tensors = {};
+    std::vector<Tensor> input_tensors = {};
 
     for(std::shared_ptr<Tensor> node_ptr : inputs) {
         //Register the input node as a predecessor
         predecessors_.push_back(node_ptr);
 
         //Collect the input
-        input_tensors.push_back(node_ptr->data());
+        input_tensors.push_back(*node_ptr);
     }
     
     //Carry out the operation
-    std::vector<xt::xarray<double>> outputs = compute(input_tensors);
+    std::vector<Tensor> outputs = compute(input_tensors);
 
 
     std::vector<std::shared_ptr<Tensor>> output_node_ptrs = {};
-    for(xt::xarray<double> output_tensor : outputs) {
+    for(Tensor output_tensor : outputs) {
 
         //Wrap operation's output in tensor node
         Tensor output_node = Tensor(output_tensor);

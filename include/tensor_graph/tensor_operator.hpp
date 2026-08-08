@@ -58,17 +58,7 @@ public:
         return std::make_shared<ConcreteType>(std::forward<Args>(args)...);
     }
 
-
-    /**
-    * @return most recent inputs to this operator, as type `xt::xarray`
-    */
-    std::vector<xt::xarray<double>> input_tensors() const;
-
-    /**
-    * @return most recent outputs of this operator, as type `xt::xarray`
-    */
-    std::vector<xt::xarray<double>> output_tensors() const;
-
+    
     /**
     * @return number of input tensors used by this operator. Equals `ARBITARY_INPUT_COUNT` if unlimited tensors are accepted.
     */
@@ -95,7 +85,7 @@ public:
      * @param inputs tensors to compute this operation on
      * @return results of this operator on `inputs`
      */
-    virtual std::vector<xt::xarray<double>> compute(std::vector<xt::xarray<double>> inputs) = 0;
+    virtual std::vector<Tensor> compute(std::vector<Tensor> inputs) = 0;
 
     /**
      * Returns the backwards pass of this operation on `upstream_gradients`.
@@ -104,7 +94,7 @@ public:
      * @param upstream_gradients gradients from the previous operator
      * @return results of the operator's backwards pass on `upstream_gradients`
      */
-    virtual std::vector<xt::xarray<double>> compute_backwards_pass(std::vector<xt::xarray<double>> upstream_gradients) = 0;
+    virtual std::vector<Tensor> compute_backwards_pass(std::vector<Tensor> upstream_gradients) = 0;
 
     /**
      * @return identifying string of this operator

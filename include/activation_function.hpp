@@ -41,7 +41,7 @@ private:
     *
     * Makes calculation of the backwards pass easier.
     */
-    std::vector<xt::xarray<double>> prev_outputs_;
+    std::vector<Tensor> prev_outputs_;
 
 public:
 
@@ -56,11 +56,11 @@ public:
     /**
     * Computes the Sigmoid activation function on each parameter in `inputs`
     */
-    std::vector<xt::xarray<double>> compute(std::vector<xt::xarray<double>> inputs) override {
+    std::vector<Tensor> compute(std::vector<Tensor> inputs) override {
 
-        std::vector<xt::xarray<double>> output = {};
-        for(xt::xarray<double> params : inputs) {
-            output.push_back( 1 / (1 + exp(-params)) );
+        std::vector<Tensor> output = {};
+        for(Tensor params : inputs) {
+            output.push_back( Tensor(1 / (1 + exp(-params.data()))) );
         }
 
         prev_outputs_ = output;
@@ -70,13 +70,13 @@ public:
     /**
     * Computes the gradient of Sigmoid for each parameter of `upstream_gradients`
     */
-    std::vector<xt::xarray<double>> compute_backwards_pass(std::vector<xt::xarray<double>> upstream_gradients) override {
-        std::vector<xt::xarray<double>> output;
-        output.resize(upstream_gradients.size());
+    std::vector<Tensor> compute_backwards_pass(std::vector<Tensor> upstream_gradients) override {
+        std::vector<Tensor> output;
+        output.reserve(upstream_gradients.size());
 
         // sigmoid(x) * (1.0 - sigmoid(x));
         for(int32_t i = 0; i < (int32_t)upstream_gradients.size(); i++) {
-            output[i] = upstream_gradients[i] * prev_outputs_[i] * (1 - prev_outputs_[i]);
+            output.push_back(Tensor(upstream_gradients[i].data() * prev_outputs_[i].data() * (1 - prev_outputs_[i].data())));
         }
         return output;
     }

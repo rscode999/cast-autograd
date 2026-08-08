@@ -22,18 +22,18 @@ int main() {
   net.enable();
 
 
-  vector<xarray<double>> inputs = {
-    {0, 0},
-    {0, 1},
-    {1, 0},
-    {1, 1}
+  vector<Tensor> inputs = {
+    Tensor({0, 0}),
+    Tensor({0, 1}),
+    Tensor({1, 0}),
+    Tensor({1, 1})
   };
 
-  vector<xarray<double>> expected_outputs = {
-    {0},
-    {1},
-    {1},
-    {0}
+  vector<Tensor> expected_outputs = {
+    Tensor(xarray<double>{0}),
+    Tensor(xarray<double>{1}),
+    Tensor(xarray<double>{1}),
+    Tensor(xarray<double>{0})
   };
 
 
@@ -42,16 +42,19 @@ int main() {
     double total_loss = 0;
 
     for(int32_t i = 0; i < inputs.size(); i++) {
-      xarray<double> predicted = net.forward(inputs[i]);
+      Tensor predicted = net.forward(inputs[i]);
       total_loss += loss_calc->compute(predicted, expected_outputs[i]);
       net.backward(predicted, expected_outputs[i]);
-      // cout << "Backwards" << endl;
       net.optimize();
     }
 
     if(e % 100 == 0) {
       cout << "Total loss: " << total_loss << endl;
     }
+  }
+
+  for(int32_t i = 0; i < inputs.size(); i++) {
+    cout << "Predictions for " << inputs[i] << ": " << net.forward(inputs[i]) << endl;
   }
 }
 

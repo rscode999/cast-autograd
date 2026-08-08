@@ -23,6 +23,17 @@ namespace cast {
  * Network that allows users to arrange layers and operators in any order
  */
 class CustomNetwork {
+private:
+    /**
+     * Holds the tensor first given to this network
+     */
+    std::shared_ptr<Tensor> initial_input_;
+
+    /**
+    * Holds the most recent output to this network
+    */
+    std::shared_ptr<Tensor> output_;
+
 public:
     /**
      * Creates an empty custom network object
@@ -36,7 +47,16 @@ public:
      * 
      * This method is user-defined.
      */
-    virtual xt::xarray<double> forward(xt::xarray<double> input) = 0;
+    virtual Tensor forward(Tensor input) {
+        throw not_implemented();
+    }
+
+
+    void backward(xt::xarray<double> predicted, xt::xarray<double> expected) {
+        //Topological sort the tensor nodes
+
+        //Pass the gradients backward
+    }
 };
 
 
@@ -44,7 +64,7 @@ public:
 /**
  * (Sequentially defined) network
  */
-class Network : public CustomNetwork {
+class Network {
 public: //normally private
     /**
      * Operators that the network uses, in order
@@ -57,8 +77,8 @@ public: //normally private
     std::shared_ptr<Tensor> initial_input_;
 
     /**
-    * Holds the most recent output to this network
-    */
+     * Holds the most recent output to this network
+     */
     std::shared_ptr<Tensor> output_;
 
  
@@ -68,20 +88,20 @@ public: //normally private
     std::shared_ptr<LossCalculator> loss_calc_;
 
     /**
-    * Optimizer used by this network
-    */
+     * Optimizer used by this network
+     */
     std::shared_ptr<Optimizer> optimizer_;
 
     /**
-    * True if the network is ready for training and evaluation
-    */
+     * True if the network is ready for training and evaluation
+     */
     bool enabled_;
 
 public:
     /**
      * Creates a new network
      */
-    Network() : enabled_(false) {       
+    Network() : enabled_(false) {      
     };
 
     /**
@@ -121,9 +141,9 @@ public:
 
 
     /**
-    * Checks if the network has the necessary components to run. 
-    * If not, throws `invalid_config`. If so, allows training and optimization.
-    */
+     * Checks if the network has the necessary components to run. 
+     * If not, throws `invalid_config`. If so, allows training and optimization.
+     */
     void enable() {
         if(!loss_calc_) {
             throw invalid_config("Network needs a defined loss calculator");
@@ -142,9 +162,9 @@ public:
      * Returns the result of the network's forward pass on `input`
      * 
      * @param input tensor to compute forward pass on
-     * @return result of forward pass
+     * @return result of forward pass wrapped in a Tensor
      */
-    xt::xarray<double> forward(xt::xarray<double> input) override {
+    Tensor forward(Tensor input) {
         if(!enabled_) {
             throw invalid_config("Must enable the network prior to training");
         }
@@ -160,7 +180,7 @@ public:
         }
 
         output_ = current_node[0]; //save output (only the first one)
-        return current_node[0]->data();
+        return *current_node[0];
     }
 
 
@@ -169,14 +189,14 @@ public:
      * @param predicted network's prediction for a given input
      * @param expected what the network should have predicted for the input
      */
-    void backward(xt::xarray<double> predicted, xt::xarray<double> expected) {
+    void backward(Tensor predicted, Tensor expected) {
         if(!enabled_) {
             throw invalid_config("Must enable the network prior to computing backwards pass");
         }
         
         //Compute loss gradient and set it as the initial gradient
-        xt::xarray<double> loss_gradient = loss_calc_->compute_gradient(predicted, expected);
-        std::vector<xt::xarray<double>> current_gradients = {loss_gradient};
+        Tensor loss_gradient = loss_calc_->compute_gradient(predicted, expected);
+        std::vector<Tensor> current_gradients = {loss_gradient};
 
         //Check the output
         if(!output_) {
@@ -190,14 +210,10 @@ public:
         if(!current_result) {
             throw invalid_config("The network's forward method must be called prior to computing a backwards pass");
         }
-        // std::cout << *current_result << std::endl;
 
         //Cycle through each node and operator, backwards
         while(current_result != nullptr && current_result->prev_operator_ != nullptr) {
-            // std::cout << *current_result << std::endl;
             std::shared_ptr<TensorOperator> current_operator = current_result->prev_operator_; 
-
-            // std::cout << current_operator->name() << std::endl;
             
             //Pass loss/gradients backward through operator (the operators are what contain the weights)
             current_gradients = current_operator->compute_backwards_pass(current_gradients);
@@ -215,8 +231,8 @@ public:
 
 
     /**
-    * Runs an optimization pass on the network's layers, using the stored optimizer
-    */
+     * Runs an optimization pass on the network's layers, using the stored optimizer
+     */
     void optimize() {
         if(!enabled_) {
             throw invalid_config("Must enable the network prior to optimizing"); 
