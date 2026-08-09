@@ -48,7 +48,7 @@ std::vector<std::shared_ptr<Tensor>> TensorOperator::compute_and_link(std::vecto
         //Wrap operation output tensor node in a std::shared_ptr
         std::shared_ptr<Tensor> output_node_ptr = std::make_shared<Tensor>(std::move(output_node));
 
-        //Register this operation object as the new output's precedessor
+        //Register this operation object as the new output's predecessor
         output_node_ptr->prev_operator_ = shared_from_this();
 
         output_node_ptrs.push_back(output_node_ptr);

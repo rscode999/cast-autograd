@@ -25,12 +25,12 @@ class Tensor;
 class TensorOperator : public std::enable_shared_from_this<TensorOperator> {
 protected:
     /**
-     * Pointers to all tensors that are computed, just prior to this operator receiving them
+     * Indices to all tensors that are computed, just prior to this operator receiving them
      */
     std::vector<std::shared_ptr<Tensor>> predecessors_ = {};
     
     /**
-    * Pointers to all tensors after computation by this operator
+    * Indices to all tensors after computation by this operator
     */
     std::vector<std::shared_ptr<Tensor>> successors_ = {};
 

@@ -180,6 +180,8 @@ public:
         // d_Input = transpose of weights * d_output, to next layer
         xt::xarray<double> d_input = xt::linalg::dot(xt::transpose(parameters_[Weights].data()), d_output);
 
+        std::cout << "gradients " << d_input << std::endl;
+
         // Return the gradient vector for the previous layer wrapped in a Tensor
         return {Tensor(d_input)};
     }

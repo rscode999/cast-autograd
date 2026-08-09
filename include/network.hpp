@@ -39,6 +39,8 @@ private:
 
     std::shared_ptr<LossCalculator> loss_calc_;
 
+    std::shared_ptr<Optimizer> optimizer_;
+
 
     void topological_sort(std::shared_ptr<Tensor> node, 
                           std::unordered_set<TensorOperator*>& visited, 
@@ -77,6 +79,20 @@ public:
     CustomNetwork() {
     }
 
+    /**
+    * Sets the loss calculator to `calc`
+    */
+    void set_loss_calculator(std::shared_ptr<LossCalculator> calc) {
+        loss_calc_ = calc;
+    }
+
+    /**
+    * Sets the optimizer to `optim`
+    */
+    void set_optimizer(std::shared_ptr<Optimizer> optim) {
+        optimizer_ = optim;
+    }
+
 
     /**
      * Returns the result of the network's forward pass, saving the initial and final inputs
@@ -93,12 +109,17 @@ public:
 
     void backward(Tensor predicted, Tensor expected) {
         // 1. Initialize loss gradient (e.g., MSE: predicted - expected, or similar)
+        if(!loss_calc_) {
+            throw invalid_config("Loss calculator required");
+        }
         Tensor loss_grad = loss_calc_->compute_gradient(predicted, expected);
 
         // 2. Topological sort the tensor nodes
         std::unordered_set<TensorOperator*> visited;
         std::vector<std::shared_ptr<TensorOperator>> sorted_ops;
         topological_sort(output_, visited, sorted_ops);
+
+        std::cout << "Topo sort complete" << std::endl;
 
         // 3. Map to accumulate incoming gradients for each tensor
         //    Using a pointer or a unique ID of the tensor as the key
@@ -160,7 +181,7 @@ public:
  * (Sequentially defined) network
  */
 class Network {
-private:
+protected:
     /**
      * Operators that the network uses, in order
      */
@@ -339,6 +360,34 @@ public:
 
 };
 
+
+
+/**
+* Revised custom network. Stores layers as shared pointers internally
+*/
+class InlineSequentialNetwork : public Network {
+
+    /**
+    * List of all currently registered outputs
+    */
+    std::vector<std::shared_ptr<TensorOperator>> output_operators_;
+
+    void add_operator(std::shared_ptr<TensorOperator> op, int32_t index = 0) {
+        //add operator to back
+        operators_.push_back(op);
+
+        //record output
+        if(output_operators_.size() == 0) {
+            output_operators_.push_back(op); //first operator: add first index
+        }
+        else if(index < 0 || index >= (int32_t)output_operators_.size()) {
+            throw std::logic_error("Not enough branches");
+        }
+        else {
+            output_operators_[index] = op; //not first operator: update
+        }
+    }
+};
 
 
 
