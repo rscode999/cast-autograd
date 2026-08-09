@@ -15,7 +15,6 @@ namespace cast {
 const int32_t ARBITARY_INPUT_COUNT = -99;
 const int32_t ARBITARY_OUTPUT_COUNT = -100;
 
-class Tensor;
 
 /**
  * Computes an operation on one or more tensors.
@@ -27,12 +26,12 @@ protected:
     /**
      * Indices to all tensors that are computed, just prior to this operator receiving them
      */
-    std::vector<std::shared_ptr<Tensor>> predecessors_ = {};
+    std::vector<int32_t> predecessors_ = {};
     
     /**
     * Indices to all tensors after computation by this operator
     */
-    std::vector<std::shared_ptr<Tensor>> successors_ = {};
+    std::vector<int32_t> successors_ = {};
 
     /**
     * Number of inputs allowed by this operation
@@ -45,7 +44,6 @@ protected:
     int32_t n_outputs_ = ARBITARY_OUTPUT_COUNT;
 
 public:
-    friend class Tensor;
     friend class CustomNetwork;
     friend class Network;
  
@@ -75,21 +73,13 @@ public:
 
 
     /**
-     * Returns a shared pointer to a tensor, representing the output of this operator.
-     * The node given to this method is registered as a predecessor to this operator.
-     * @param input shared pointer to the input to this operation
-     * @return Tensor output of this operation
-     */
-    std::vector<std::shared_ptr<Tensor>> compute_and_link(std::vector<std::shared_ptr<Tensor>> input);
-
-    /**
      * Returns the results of this operation on `inputs`.
      *
      * The operator can have one or more inputs, and one or more outputs
      * @param inputs tensors to compute this operation on
      * @return results of this operator on `inputs`
      */
-    virtual std::vector<Tensor> compute(std::vector<Tensor> inputs) = 0;
+    virtual std::vector<xt::xarray<double>> compute(std::vector<xt::xarray<double>> inputs) = 0;
 
     /**
      * Returns the backwards pass of this operation on `upstream_gradients`.
@@ -98,7 +88,7 @@ public:
      * @param upstream_gradients gradients from the previous operator
      * @return results of the operator's backwards pass on `upstream_gradients`
      */
-    virtual std::vector<Tensor> compute_backwards_pass(std::vector<Tensor> upstream_gradients) = 0;
+    virtual std::vector<xt::xarray<double>> compute_backwards_pass(std::vector<xt::xarray<double>> upstream_gradients) = 0;
 
     /**
      * @return identifying string of this operator

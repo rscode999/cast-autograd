@@ -34,18 +34,18 @@ protected:
     /**
      * Parameters of the layer. Each index has a specialized role (i.e. weight matrix, bias vector)
      */
-    std::vector<Tensor> parameters_;
+    std::vector<xt::xarray<double>> parameters_;
 
     /**
      * Gradients of each tensor in the `parameters_` list.
      * Index `i` corresponds to the gradients of `parameters_[i]`.
      */
-    std::vector<Tensor> gradients_;
+    std::vector<xt::xarray<double>> gradients_;
 
     /**
      * Tensors before this operation was applied
      */
-    std::vector<Tensor> prev_inputs_;
+    std::vector<xt::xarray<double>> prev_inputs_;
 
 
 public:
@@ -57,14 +57,14 @@ public:
     /**
      * @return parameters (weights, biases, ...) of this layer, as a std::vector of Tensors
      */
-    std::vector<Tensor>& parameters() {
+    std::vector<xt::xarray<double>>& parameters() {
         return parameters_;
     }
 
     /**
      * @return gradients of the weights, biases, etc. of this layer, as a std::vector of Tensors
      */
-    std::vector<Tensor>& gradients() {
+    std::vector<xt::xarray<double>>& gradients() {
         return gradients_;
     }
 };
@@ -143,17 +143,13 @@ public:
     /**
      * Returns the result of the forward pass on its input
      */
-    std::vector<Tensor> compute(std::vector<Tensor> input) override {
+    std::vector<xt::xarray<double>> compute(std::vector<xt::xarray<double>> input) override {
         assert(input.size() == 1 && "Linear1d forward pass computation has one input");
 
         prev_inputs_[0] = input[0];
 
-        xt::xarray<double> input_tensor = input[0].data();
-        assert(input_tensor.dimension() == 1 && "Input must be a vector");
-        assert(input_tensor.size() == input_vector_dimension_ && "Input tensor must have dimension matching the layer's input dimension");
-
-        xt::xarray<double> output_tensor = xt::linalg::dot(parameters_[Weights].data(), input_tensor) + parameters_[Biases].data();
-        return {Tensor(output_tensor)};
+        xt::xarray<double> output_tensor = xt::linalg::dot(parameters_[Weights], input[0]) + parameters_[Biases];
+        return {output_tensor};
     }
 
 
@@ -163,27 +159,24 @@ public:
      * @param upstream_gradients gradients from this layer's successor. Precondition: contains a single 1d vector
      * @return dY/dL, where Y is the overall derivative and L is this layer's data, contained in index 0 of the output
      */
-    std::vector<Tensor> compute_backwards_pass(std::vector<Tensor> upstream_gradients) override {
+    std::vector<xt::xarray<double>> compute_backwards_pass(std::vector<xt::xarray<double>> upstream_gradients) override {
         assert(upstream_gradients.size() == 1 && "Linear1d backwards operation must have one input");
 
-        xt::xarray<double> d_output = upstream_gradients[0].data();
+        xt::xarray<double> d_output = upstream_gradients[0];
 
         // dW incremented by: d_output * transpose of prev. input
-        xt::xarray<double> new_weight_grads = gradients_[Weights].data() + 
-            (xt::view(d_output, xt::all(), xt::newaxis()) * xt::view(prev_inputs_[0].data(), xt::newaxis(), xt::all()));
-        gradients_[Weights].data() = new_weight_grads;
+        gradients_[Weights] += (xt::view(d_output, xt::all(), xt::newaxis()) * xt::view(prev_inputs_[0], xt::newaxis(), xt::all()));
 
         // dB incremented by d_output
-        xt::xarray<double> new_bias_grads = gradients_[Biases].data() + d_output;
-        gradients_[Biases].data() = new_bias_grads;
+        gradients_[Biases] += d_output;
 
         // d_Input = transpose of weights * d_output, to next layer
-        xt::xarray<double> d_input = xt::linalg::dot(xt::transpose(parameters_[Weights].data()), d_output);
+        xt::xarray<double> d_input = xt::linalg::dot(xt::transpose(parameters_[Weights]), d_output);
 
-        std::cout << "gradients " << d_input << std::endl;
+        // std::cout << "gradients " << d_input << std::endl;
 
         // Return the gradient vector for the previous layer wrapped in a Tensor
-        return {Tensor(d_input)};
+        return {d_input};
     }
 };
 

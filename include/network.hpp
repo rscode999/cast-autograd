@@ -6,7 +6,6 @@
 #include "activation_function.hpp"
 #include "loss_calculator.hpp"
 #include "optimizer.hpp"
-#include "tensor_graph/tensor.hpp"
 #include "tensor_graph/tensor_graph.hpp"
 
 #include <iostream>
@@ -21,160 +20,10 @@ namespace cast {
 
 
 
-
 /**
- * Network that allows users to arrange layers and operators in any order
- */
-class CustomNetwork {
-private:
-    /**
-     * Holds the tensor first given to this network
-     */
-    std::shared_ptr<Tensor> initial_input_;
-
-    /**
-    * Holds the most recent output to this network
-    */
-    std::shared_ptr<Tensor> output_;
-
-    std::shared_ptr<LossCalculator> loss_calc_;
-
-    std::shared_ptr<Optimizer> optimizer_;
-
-
-    void topological_sort(std::shared_ptr<Tensor> node, 
-                          std::unordered_set<TensorOperator*>& visited, 
-                          std::vector<std::shared_ptr<TensorOperator>>& sorted_ops) {
-        if (!node || !node->prev_operator_) {
-            return; // Reached input leaf node
-        }
-
-        std::shared_ptr<TensorOperator> op = node->prev_operator_;
-        if (visited.find(op.get()) != visited.end()) {
-            return; // Already visited this operator
-        }
-
-        visited.insert(op.get());
-
-        // Visit all predecessors (inputs to this operator) first
-        for (const std::shared_ptr<Tensor>& pred : op->predecessors_) {
-            topological_sort(pred, visited, sorted_ops);
-        }
-
-        sorted_ops.push_back(op);
-    }
-
-protected:
-    /**
-     * Returns the result of the network's forward pass.
-     * 
-     * This method is user-defined.
-     */
-    virtual Tensor forward(Tensor input) = 0;
-
-public:
-    /**
-     * Creates an empty custom network object
-     */
-    CustomNetwork() {
-    }
-
-    /**
-    * Sets the loss calculator to `calc`
-    */
-    void set_loss_calculator(std::shared_ptr<LossCalculator> calc) {
-        loss_calc_ = calc;
-    }
-
-    /**
-    * Sets the optimizer to `optim`
-    */
-    void set_optimizer(std::shared_ptr<Optimizer> optim) {
-        optimizer_ = optim;
-    }
-
-
-    /**
-     * Returns the result of the network's forward pass, saving the initial and final inputs
-     */
-    virtual Tensor forward_and_link(Tensor input) {
-        initial_input_ = std::make_shared<Tensor>(input);
-
-        Tensor forward_result = forward(input);
-        output_ = std::make_shared<Tensor>(forward_result);
-
-        return forward_result;
-    }
-
-
-    void backward(Tensor predicted, Tensor expected) {
-        // 1. Initialize loss gradient (e.g., MSE: predicted - expected, or similar)
-        if(!loss_calc_) {
-            throw invalid_config("Loss calculator required");
-        }
-        Tensor loss_grad = loss_calc_->compute_gradient(predicted, expected);
-
-        // 2. Topological sort the tensor nodes
-        std::unordered_set<TensorOperator*> visited;
-        std::vector<std::shared_ptr<TensorOperator>> sorted_ops;
-        topological_sort(output_, visited, sorted_ops);
-
-        std::cout << "Topo sort complete" << std::endl;
-
-        // 3. Map to accumulate incoming gradients for each tensor
-        //    Using a pointer or a unique ID of the tensor as the key
-        std::unordered_map<Tensor*, xt::xarray<double>> grad_map;
-
-        // Seed the output/loss tensor with the initial gradient
-        // (Assuming output_ is the final tensor of the network)
-        grad_map[output_.get()] = loss_grad.data();
-
-        // 4. Pass the gradients backward
-        for (int32_t i = (int32_t)sorted_ops.size() - 1; i >= 0; i--) {
-            auto& op = sorted_ops[i];
-
-            // Collect upstream gradients for all outputs of this operator
-            std::vector<Tensor> upstream_gradients;
-            
-
-            for (const std::shared_ptr<Tensor>& t_ptr : op->successors_) {
-                Tensor* t_raw = t_ptr.get();
-                auto it = grad_map.find(t_raw);
-                if (it != grad_map.end()) {
-                    upstream_gradients.push_back(Tensor(it->second));
-                } 
-                else {
-                    upstream_gradients.push_back(Tensor(xt::zeros_like(t_ptr->data())));
-                }
-            }
-
-            // Compute the backward pass for this operator
-            std::vector<Tensor> input_gradients = op->compute_backwards_pass(upstream_gradients);
-
-            // Route the resulting input gradients to the operator's predecessor tensors
-            std::vector<Tensor> inputs;
-            for(const std::shared_ptr<Tensor>& t_ptr : op->predecessors_) {
-                inputs.push_back(*t_ptr);
-            }
-
-            assert(input_gradients.size() == inputs.size() && "Must provide one gradient per input");
-
-            for (size_t j = 0; j < inputs.size(); ++j) {
-                Tensor* pred_tensor = &inputs[j];
-                
-                // Accumulate gradients if the predecessor tensor already has gradients 
-                // (handles branching / shared weights / multiple consumers)
-                if (grad_map.find(pred_tensor) != grad_map.end()) {
-                    grad_map[pred_tensor] += input_gradients[j].data();
-                }
-                else {
-                    grad_map[pred_tensor] = input_gradients[j].data();
-                }
-            }
-        }
-    }
-};
-
+* Index that signals that there are no more operators in a branch, and that the branch is waiting for other branches to finish executing
+*/
+const int32_t BRANCH_END = -1000;
 
 
 /**
@@ -188,14 +37,22 @@ protected:
     std::vector<std::shared_ptr<TensorOperator>> operators_;
 
     /**
+    * Indices in `operators_` that are leaf nodes, i.e. have no successors.
+    *
+    * Leaf nodes are the only nodes that can be added to.
+    * The length of this vector is the current number of branches.
+    */
+    std::vector<int32_t> leaf_node_indices_;
+
+    /**
      * Holds the tensor first given to this network
      */
-    std::shared_ptr<Tensor> initial_input_;
+    xt::xarray<double> initial_input_;
 
     /**
      * Holds the most recent output to this network
      */
-    std::shared_ptr<Tensor> output_;
+    xt::xarray<double> output_;
 
  
     /**
@@ -220,13 +77,36 @@ public:
     Network() : enabled_(false) {      
     };
 
+    
+
     /**
      * Registers `op` as the next operator to execute in the network
      * @param op new operator to add
      */
-    void add_operator(std::shared_ptr<TensorOperator> op) {
+    void add_operator(std::shared_ptr<TensorOperator> op, int32_t branch_index = 0) {
         operators_.push_back(op);
+
+        //First operator loaded: Add the current node as an output
+        if(leaf_node_indices_.size() == 0) {
+            leaf_node_indices_.push_back(0);
+        }
+        //Handle branch index out of range
+        else if(branch_index < 0 || branch_index >= leaf_node_indices_.size()) {
+            throw std::logic_error("Branch index out of range");
+        }
+        //Otherwise: The currently added leaf node index is incremented
+        else {
+            //Load the recently added operator's predecessor index
+            op->predecessors_.clear();
+            op->predecessors_.push_back(leaf_node_indices_[branch_index]);
+
+            //Register recently added node as the current branch leaf node's successor
+            operators_[leaf_node_indices_[branch_index]]->successors_.push_back( (int32_t)operators_.size() - 1 );
+
+            leaf_node_indices_[branch_index] = (int32_t)operators_.size() - 1;
+        }
     }
+
 
     /**
      * Sets this network's loss calculator to `calc`.
@@ -268,6 +148,15 @@ public:
             throw invalid_config("Network needs a defined optimizer");
         }
 
+        // for(std::shared_ptr<TensorOperator> op : operators_) {
+        //     std::cout << op->name() << " ";
+        //     std::cout << "successors: ";
+        //     for(int32_t successor_idx : op->successors_) {
+        //         std::cout << successor_idx << ", ";
+        //     }
+        //     std::cout << std::endl;
+        // }
+
         optimizer_->initialize(operators_);
 
         enabled_ = true;
@@ -278,25 +167,53 @@ public:
      * Returns the result of the network's forward pass on `input`
      * 
      * @param input tensor to compute forward pass on
-     * @return result of forward pass wrapped in a Tensor
+     * @return result of forward pass
      */
-    Tensor forward(Tensor input) {
+    xt::xarray<double> forward(xt::xarray<double> input) {
         if(!enabled_) {
             throw invalid_config("Must enable the network prior to training");
         }
 
-        //Anchor the forward pass tensors by saving the input
-        initial_input_ = std::make_shared<Tensor>(input);
-
         //Cycle the input through the operators
-        std::vector<std::shared_ptr<Tensor>> current_node = {initial_input_};
-        for(const std::shared_ptr<TensorOperator>& op : operators_) {
-            //Each operator creates and saves a shared pointer to its intermediate output
-            current_node = op->compute_and_link(current_node);
+        std::vector<std::vector<xt::xarray<double>>> current_branch_outputs = {{input}}; //Each index is the output(s) of a branch. Layers can have many outputs
+        std::vector<int32_t> next_operator_indices = {0}; //Each index is the next operator to compute
+
+        //PRECONDITION: There can be one, and exactly one, operator with no successors
+        bool successors_remaining = true;
+        while(successors_remaining) {
+
+            std::cout << "Computing operator ";
+            for(int32_t op_index : next_operator_indices) {
+                std::cout << op_index << ", ";
+            }
+            std::cout << std::endl;
+            
+            //Compute one operation for each branch
+            for(int32_t i = 0; i < (int32_t)next_operator_indices.size(); i++) {
+                //Handle branch starts and ends
+                if(false) { //If the current operator is a branch
+                }
+                //Handle single inputs and outputs
+                else {
+                    //Get result
+                    std::cout << operators_[next_operator_indices[i]] -> name() << std::endl;
+                    current_branch_outputs[i] = operators_[next_operator_indices[i]] -> compute(current_branch_outputs[i]);
+                    
+                    //Next operator is a leaf: There can be only one network output, so exit the entire operation
+                    if(operators_[next_operator_indices[i]] -> successors_.size() == 0) {
+                        successors_remaining = false;
+                        break;
+                    }
+
+                    //Update next to check (Non-branches have exactly one successor, stored in index 0)
+                    next_operator_indices[i] = operators_[next_operator_indices[i]] -> successors_[0];
+                }
+
+            }
         }
 
-        output_ = current_node[0]; //save output (only the first one)
-        return *current_node[0];
+
+        return current_branch_outputs[0][0];
     }
 
 
@@ -305,44 +222,8 @@ public:
      * @param predicted network's prediction for a given input
      * @param expected what the network should have predicted for the input
      */
-    void backward(Tensor predicted, Tensor expected) {
-        if(!enabled_) {
-            throw invalid_config("Must enable the network prior to computing backwards pass");
-        }
+    void backward(xt::xarray<double> predicted, xt::xarray<double> expected) {
         
-        //Compute loss gradient and set it as the initial gradient
-        Tensor loss_gradient = loss_calc_->compute_gradient(predicted, expected);
-        std::vector<Tensor> current_gradients = {loss_gradient};
-
-        //Check the output
-        if(!output_) {
-            throw invalid_config("No previous output found- must call forward pass prior to using backwards pass");
-        }
-
-        //Initialize the current output
-        std::shared_ptr<Tensor> current_result = output_;
-        
-
-        if(!current_result) {
-            throw invalid_config("The network's forward method must be called prior to computing a backwards pass");
-        }
-
-        //Cycle through each node and operator, backwards
-        while(current_result != nullptr && current_result->prev_operator_ != nullptr) {
-            std::shared_ptr<TensorOperator> current_operator = current_result->prev_operator_; 
-            
-            //Pass loss/gradients backward through operator (the operators are what contain the weights)
-            current_gradients = current_operator->compute_backwards_pass(current_gradients);
-
-            //Move one operator backward
-            if (!current_operator->predecessors_.empty()) {
-                current_result = current_operator->predecessors_[0];
-            } 
-            else {
-                break;
-            }
-        }
-
     }
 
 
@@ -355,39 +236,11 @@ public:
         }
 
         optimizer_->step(operators_, true);
-        output_.reset();
+        output_ = xt::zeros_like(output_);
     }
 
 };
 
-
-
-/**
-* Revised custom network. Stores layers as shared pointers internally
-*/
-class InlineSequentialNetwork : public Network {
-
-    /**
-    * List of all currently registered outputs
-    */
-    std::vector<std::shared_ptr<TensorOperator>> output_operators_;
-
-    void add_operator(std::shared_ptr<TensorOperator> op, int32_t index = 0) {
-        //add operator to back
-        operators_.push_back(op);
-
-        //record output
-        if(output_operators_.size() == 0) {
-            output_operators_.push_back(op); //first operator: add first index
-        }
-        else if(index < 0 || index >= (int32_t)output_operators_.size()) {
-            throw std::logic_error("Not enough branches");
-        }
-        else {
-            output_operators_[index] = op; //not first operator: update
-        }
-    }
-};
 
 
 

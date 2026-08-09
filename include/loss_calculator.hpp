@@ -37,7 +37,7 @@ public:
      * @param expected what the network should have predicted for the input
      * @return loss of `predicted` and `expected`
      */
-    virtual double compute(Tensor predicted, Tensor expected) const = 0;
+    virtual double compute(xt::xarray<double> predicted, xt::xarray<double> expected) const = 0;
 
     /**
      * Returns the tensor-valued gradient of the loss, between `predicted` and `expected`, as computed by this calculator.
@@ -45,7 +45,7 @@ public:
      * @param expected what the network should have predicted for the input
      * @return gradient of the loss between `predicted` and `expected` wrapped in a Tensor
      */
-    virtual Tensor compute_gradient(Tensor predicted, Tensor expected) const = 0;
+    virtual xt::xarray<double> compute_gradient(xt::xarray<double> predicted, xt::xarray<double> expected) const = 0;
 
 };
 
@@ -74,15 +74,13 @@ public:
      * @param expected what the model should have predicted for a given input. Precondition: Has the same number of elements as `predicted`
      * @return MSE loss between `predicted` and `expected`.
      */
-    double compute(Tensor predicted, Tensor expected) const override {
-        xt::xarray<double> pred_data = predicted.data();
-        xt::xarray<double> exp_data = expected.data();
+    double compute(xt::xarray<double> predicted, xt::xarray<double> expected) const override {
 
-        assert(pred_data.size() > 0 && "Predicted input must be non-empty");
-        assert(pred_data.size() == exp_data.size() && "Number of elements in predicted and expected must match");
+        assert(predicted.size() > 0 && "Predicted input must be non-empty");
+        assert(predicted.size() == expected.size() && "Number of elements in predicted and expected must match");
 
-        double sum_sq = xt::sum(xt::square(pred_data - exp_data))();
-        return sum_sq / (2.0 * static_cast<double>(pred_data.size()));
+        double sum_sq = xt::sum(xt::square(predicted - expected))();
+        return sum_sq / (2.0 * static_cast<double>(predicted.size()));
     }
 
     /**
@@ -91,15 +89,13 @@ public:
      * @param expected what the model should have predicted for a given input. Precondition: Has the same number of elements as `predicted`
      * @return gradient of MSE loss between `predicted` and `expected` wrapped in a Tensor
      */
-    Tensor compute_gradient(Tensor predicted, Tensor expected) const override {
-        xt::xarray<double> predicted_data = predicted.data();
-        xt::xarray<double> expected_data = expected.data();
+    xt::xarray<double> compute_gradient(xt::xarray<double> predicted, xt::xarray<double> expected) const override {
 
-        assert(predicted_data.size() > 0 && "Predicted input must be non-empty");
-        assert(predicted_data.size() == expected_data.size() && "Number of elements in predicted and expected must match");
+        assert(predicted.size() > 0 && "Predicted input must be non-empty");
+        assert(predicted.size() == expected.size() && "Number of elements in predicted and expected must match");
         
-        xt::xarray<double> grad_data = (predicted_data - expected_data) / predicted_data.size();
-        return Tensor(grad_data);
+        xt::xarray<double> grad_data = (predicted - expected) / predicted.size();
+        return grad_data;
     }
 };
 

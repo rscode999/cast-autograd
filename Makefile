@@ -7,4 +7,4 @@ XTL_PATH='lib/xtl/include/'
 XTENSOR_BLAS_PATH='lib/xtensor-blas/include'
 
 c:
-	g++ ${MAIN} include/tensor_graph/tensor.cpp include/tensor_graph/tensor_operator.cpp -o ${OUTPUT_EXECUTABLE_NAME} --std=c++20  -I ${XTENSOR_PATH} -I ${XTL_PATH} -I ${XTENSOR_BLAS_PATH}
+	g++ ${MAIN} include/tensor_graph/tensor_operator.cpp -o ${OUTPUT_EXECUTABLE_NAME} --std=c++20  -I ${XTENSOR_PATH} -I ${XTL_PATH} -I ${XTENSOR_BLAS_PATH}

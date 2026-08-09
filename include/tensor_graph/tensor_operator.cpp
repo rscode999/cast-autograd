@@ -1,7 +1,5 @@
 #include "tensor_operator.hpp"
 
-#include "tensor.hpp"
-
 #include <memory>
 #include <iostream>
 
@@ -19,54 +17,6 @@ int32_t TensorOperator::n_inputs() const {
 int32_t TensorOperator::n_outputs() const {
     return n_outputs_;
 }
-
-
-
-std::vector<std::shared_ptr<Tensor>> TensorOperator::compute_and_link(std::vector<std::shared_ptr<Tensor>> inputs) {
-    predecessors_.clear();
-
-    std::vector<Tensor> input_tensors = {};
-
-    for(std::shared_ptr<Tensor> node_ptr : inputs) {
-        //Register the input node as a predecessor
-        predecessors_.push_back(node_ptr);
-
-        //Collect the input
-        input_tensors.push_back(*node_ptr);
-    }
-    
-    //Carry out the operation
-    std::vector<Tensor> outputs = compute(input_tensors);
-
-
-    std::vector<std::shared_ptr<Tensor>> output_node_ptrs = {};
-    for(Tensor output_tensor : outputs) {
-
-        //Wrap operation's output in tensor node
-        Tensor output_node = Tensor(output_tensor);
-
-        //Wrap operation output tensor node in a std::shared_ptr
-        std::shared_ptr<Tensor> output_node_ptr = std::make_shared<Tensor>(std::move(output_node));
-
-        //Register this operation object as the new output's predecessor
-        output_node_ptr->prev_operator_ = shared_from_this();
-
-        output_node_ptrs.push_back(output_node_ptr);
-    }
-
-    // std::cout << "this node's preds" << std::endl;
-    // for(std::shared_ptr<Tensor> n_ptr : predecessors_) {
-    //     std::cout << n_ptr->data() << std::endl;
-    // }
-    // std::cout << "output tensor node" << std::endl;
-    // for(std::shared_ptr<Tensor> n_ptr : output_node_ptrs) {
-    //     std::cout << n_ptr->prev_operator_->name() << std::endl;
-    // }
-
-    successors_ = output_node_ptrs;
-    return output_node_ptrs;
-}
-
 
 
 std::string TensorOperator::name() const {

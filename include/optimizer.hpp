@@ -22,6 +22,9 @@ namespace cast {
 class Optimizer {
 public:
 
+    /**
+    * Loads the optimizer with all information needed for training 
+    */
     virtual void initialize(std::vector<std::shared_ptr<TensorOperator>> operators) = 0;
 
     /**
@@ -75,8 +78,8 @@ public:
             
             if (layer != nullptr) {
                 // It is a layer: initialize velocities for its parameters
-                for (const Tensor& param : layer->parameters()) {
-                    layer_vels.push_back(xt::zeros_like(param.data()));
+                for (const xt::xarray<double>& param : layer->parameters()) {
+                    layer_vels.push_back(xt::zeros_like(param));
                 }
             }
 
@@ -100,23 +103,23 @@ public:
                 continue;
             }
 
-            std::vector<Tensor>& params = current_layer->parameters();
-            std::vector<Tensor>& grads = current_layer->gradients();
+            std::vector<xt::xarray<double>>& params = current_layer->parameters();
+            std::vector<xt::xarray<double>>& grads = current_layer->gradients();
             std::vector<xt::xarray<double>>& vels = velocities_[l];
 
             // Do SGD update on each of the layer's parameters
             for(int32_t i = 0; i < current_layer->parameters().size(); i++) {
                 //v = momentum * v + learning_rate * gradient
-                vels[i] = momentum_coefficient_ * vels[i] + learning_rate_ * grads[i].data();
+                vels[i] = momentum_coefficient_ * vels[i] + learning_rate_ * grads[i];
 
                 //param = param - v
-                params[i].data() -= vels[i];
+                params[i] -= vels[i];
 
                 // std::cout << "params updated to " << params[i] << std::endl;
                 
                 //set gradients to 0
                 if(zero_grad) {
-                    current_layer->gradients() [i] = Tensor(xt::zeros_like(current_layer->gradients() [i].data()));
+                    current_layer->gradients() [i] = xt::zeros_like(current_layer->gradients() [i]);
                 }
             }
         }
