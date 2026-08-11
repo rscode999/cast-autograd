@@ -24,6 +24,7 @@ int main() {
     
     net.enable();
 
+
     vector<xarray<double>> inputs = {
         xarray<double>{0, 0},
         xarray<double>{0, 1},
@@ -38,6 +39,25 @@ int main() {
         xarray<double>{0}
     };
 
-    std::cout << net.forward(inputs[0]);
+    
+    for(int e = 0; e < 1000; e++) {
+
+        double loss = 0;
+        for(int i = 0; i < (int)inputs.size(); i++) {
+            xt::xarray<double> prediction = net.forward(inputs[i]);
+            loss += loss_calc->compute(prediction, expected_outputs[i]);
+            net.backward(prediction, expected_outputs[i]);
+            net.optimize();
+        }
+
+        if(e % 100 == 0) {
+            std::cout << "Loss: " << loss << std::endl;
+        }
+    }
+
+    for(int i = 0; i < (int)inputs.size(); i++) {
+        xt::xarray<double> prediction = net.forward(inputs[i]);
+        cout << "Prediction for " << inputs[i] << ": " << prediction << endl;
+    }
 }
 

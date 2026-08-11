@@ -6,7 +6,7 @@
 #include "activation_function.hpp"
 #include "loss_calculator.hpp"
 #include "optimizer.hpp"
-#include "tensor_graph/tensor_graph.hpp"
+#include "tensor_operator.hpp"
 
 #include <iostream>
 #include <memory>
@@ -24,10 +24,12 @@ namespace cast {
 * Index that signals that there are no more operators in a branch, and that the branch is waiting for other branches to finish executing
 */
 const int32_t BRANCH_END = -1000;
+//Unused for now.
 
 
 /**
- * (Sequentially defined) network
+ * Neural network with trainable weights.
+ * Operators (i.e. layers, activation functions) are added to the network individually.
  */
 class Network {
 protected:
@@ -53,6 +55,11 @@ protected:
      * Holds the most recent output to this network
      */
     xt::xarray<double> output_;
+
+    /**
+    * Index of the last operator in the network
+    */
+    int32_t output_index_;
 
  
     /**
@@ -108,6 +115,7 @@ public:
     }
 
 
+
     /**
      * Sets this network's loss calculator to `calc`.
      * @param calc new loss calculator to use
@@ -122,6 +130,8 @@ public:
         loss_calc_ = calc;
     }
 
+
+
     /**
      * Sets this network's optimizer to `optim`.
      * @param optim new optimizer to use
@@ -134,6 +144,7 @@ public:
 
         optimizer_ = optim;
     }
+
 
 
     /**
@@ -163,9 +174,11 @@ public:
     }
 
 
+
     /**
-     * Returns the result of the network's forward pass on `input`
-     * 
+     * Returns the result of the network's forward pass on `input`.
+     *
+     * To use this method, the network must be enabled. 
      * @param input tensor to compute forward pass on
      * @return result of forward pass
      */
@@ -181,12 +194,6 @@ public:
         //PRECONDITION: There can be one, and exactly one, operator with no successors
         bool successors_remaining = true;
         while(successors_remaining) {
-
-            std::cout << "Computing operator ";
-            for(int32_t op_index : next_operator_indices) {
-                std::cout << op_index << ", ";
-            }
-            std::cout << std::endl;
             
             //Compute one operation for each branch
             for(int32_t i = 0; i < (int32_t)next_operator_indices.size(); i++) {
@@ -196,12 +203,12 @@ public:
                 //Handle single inputs and outputs
                 else {
                     //Get result
-                    std::cout << operators_[next_operator_indices[i]] -> name() << std::endl;
                     current_branch_outputs[i] = operators_[next_operator_indices[i]] -> compute(current_branch_outputs[i]);
                     
                     //Next operator is a leaf: There can be only one network output, so exit the entire operation
                     if(operators_[next_operator_indices[i]] -> successors_.size() == 0) {
                         successors_remaining = false;
+                        output_index_ = next_operator_indices[i];
                         break;
                     }
 
@@ -211,31 +218,76 @@ public:
 
             }
         }
-
-
+        
+        output_ = current_branch_outputs[0][0];
         return current_branch_outputs[0][0];
     }
 
 
+
     /**
      * Computes the backward pass, initially using `predicted` and `expected`.
+     *
+     * Stores updated gradients inside each operator, for use by the network's optimizer.
+     *
+     * The network must be enabled to use this method.
      * @param predicted network's prediction for a given input
      * @param expected what the network should have predicted for the input
      */
     void backward(xt::xarray<double> predicted, xt::xarray<double> expected) {
-        
+
+        //Compute initial loss
+        xt::xarray<double> output_loss = loss_calc_->compute_gradient(predicted, expected);
+
+        std::vector<std::vector<xt::xarray<double>>> current_branch_gradients = {{output_loss}}; //Each index is the gradient(s) of a branch. Layers can have many outputs
+        std::vector<int32_t> prev_operator_indices = {output_index_};
+
+        //PRECONDITION: There can be one, and EXACTLY ONE, operator with no predecessors
+        bool predecessors_remaining = true;
+        while(predecessors_remaining && !prev_operator_indices.empty()) {
+
+
+            //Handle branches
+            if(false) {
+            }
+            //Handle single layers
+            else {
+                //Move to the previous operator, moving gradients backward
+                for(int32_t i = 0; i < (int32_t)prev_operator_indices.size(); i++) {
+
+                    //Propagate gradients, one operator down in the branch
+                    current_branch_gradients[i] = operators_[prev_operator_indices[i]] -> compute_backwards_pass(current_branch_gradients[i]);
+
+                    //The ONE operator with no predecessors has just been backpropagated: Exit
+                    if(operators_[prev_operator_indices[i]]->predecessors_.size() == 0) {
+                        predecessors_remaining = false;
+                        break;
+                    }
+
+                    //Single layers have exactly one predecessor. Move there.
+                    prev_operator_indices[i] = operators_[prev_operator_indices[i]] -> predecessors_[0];
+                }
+            }
+        }
     }
 
 
+
     /**
-     * Runs an optimization pass on the network's layers, using the stored optimizer
+     * Runs an optimization pass on the network's layers, using the optimizer and gradients computed from the `backward` method.
+     *
+     * To use this method, the network must be enabled.
+     *
+     * WARNING: Calling `optimize` multiple times, without computing a `backward` operation,
+     * wil cause the network to use its stored gradients multiple times.
+     * @param zero_grad whether to set all operator's gradients to 0 after computing the optimization pass
      */
-    void optimize() {
+    void optimize(bool zero_grad = true) {
         if(!enabled_) {
             throw invalid_config("Must enable the network prior to optimizing"); 
         }
 
-        optimizer_->step(operators_, true);
+        optimizer_->step(operators_, zero_grad);
         output_ = xt::zeros_like(output_);
     }
 

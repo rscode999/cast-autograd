@@ -19,7 +19,7 @@ const int32_t ARBITARY_OUTPUT_COUNT = -100;
 /**
  * Computes an operation on one or more tensors.
  * 
- * Tracks which tensors are received and operated on by this operator.
+ * Tracks which operators come before and after this operator, by 0-based numerical index.
  */
 class TensorOperator : public std::enable_shared_from_this<TensorOperator> {
 protected:
@@ -44,32 +44,22 @@ protected:
     int32_t n_outputs_ = ARBITARY_OUTPUT_COUNT;
 
 public:
-    friend class CustomNetwork;
     friend class Network;
- 
-    /**
-     * Makes a new shared pointer to a tensor operator.
-     * 
-     * Equivalent to `std::make_shared<{concrete subtype of TensorOperator}>()`.
-     * 
-     * @param args constructor arguments to the new tensor operator
-     * @return `std::shared_ptr` to a new operator
-     */
-    template <typename ConcreteType, typename... Args>
-    static std::shared_ptr<ConcreteType> make_shared_op(Args&&... args) {
-        return std::make_shared<ConcreteType>(std::forward<Args>(args)...);
-    }
-
     
+
     /**
     * @return number of input tensors used by this operator. Equals `ARBITARY_INPUT_COUNT` if unlimited tensors are accepted.
     */
-    int32_t n_inputs() const;
+    int32_t n_inputs() const {
+        return n_inputs_;
+    }
 
     /**
     * @return number of output tensors given by this operator. Equals `ARBITARY_OUTPUT_COUNT` if unlimited tensors can be given.
     */
-    int32_t n_outputs() const;
+    int32_t n_outputs() const {
+        return n_outputs_;
+    }
 
 
     /**
@@ -93,7 +83,9 @@ public:
     /**
      * @return identifying string of this operator
      */
-    virtual std::string name() const;
+    virtual std::string name() const {
+        return "tensor_operator";
+    }
 
     /**
      * Properly destroys a tensor operator

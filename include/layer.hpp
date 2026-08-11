@@ -1,7 +1,7 @@
 #ifndef CAST_LAYER_
 #define CAST_LAYER_
 
-#include "tensor_graph/tensor_graph.hpp"
+#include "tensor_operator.hpp"
 
 #include <xtensor/containers/xarray.hpp>
 #include <xtensor/generators/xrandom.hpp>
@@ -16,6 +16,8 @@ namespace cast {
 
 /**
 * Layer in a network. Contains parameters and gradients for each parameter.
+*
+* Note that layers can accept multiple inputs and give multiple outputs.
 */
 class Layer : public TensorOperator {
 protected:
@@ -71,11 +73,26 @@ public:
 
 
 
+
 /**
- * Performs a fully-connected dense linear operation on 1d vectors. Produces a 1d vector.
+ * Performs a fully-connected dense linear operation on a single 1d vector. Produces a single 1d vector.
+ *
+ * Index 0 of its parameters is a 2d weight matrix. Index 1 is a 1d bias vector.
  */
 class Linear1d : public Layer {
 private:
+    
+    /**
+     * Required size of 1d input vectors
+     */
+    int32_t input_vector_dimension_;
+
+    /**
+     * Size of 1d vectors coming from the linear forward operation
+     */
+    int32_t output_vector_dimension_;
+
+public:
     /**
      * Names of indices: Weights=0, Biases=1
      */
@@ -91,18 +108,7 @@ private:
         Biases = 1
     };
 
-    
-    /**
-     * Required size of 1d input vectors
-     */
-    int32_t input_vector_dimension_;
 
-    /**
-     * Size of 1d vectors coming from the linear forward operation
-     */
-    int32_t output_vector_dimension_;
-
-public:
     /**
      * Creates a 1d linear layer with `input_dimension` inputs and `output_dimension` outputs.
      *
@@ -136,12 +142,19 @@ public:
 
 
 
+    /**
+    * @return the string "linear1d"
+    */
     std::string name() const override {
         return "linear1d";
     }
 
+
+    
     /**
-     * Returns the result of the forward pass on its input
+     * Returns the result of the linear forward pass on `input`
+     * @param input list containing the single layer input. Must have exactly 1 element
+     * @return forward pass result
      */
     std::vector<xt::xarray<double>> compute(std::vector<xt::xarray<double>> input) override {
         assert(input.size() == 1 && "Linear1d forward pass computation has one input");
@@ -165,7 +178,7 @@ public:
         xt::xarray<double> d_output = upstream_gradients[0];
 
         // dW incremented by: d_output * transpose of prev. input
-        gradients_[Weights] += (xt::view(d_output, xt::all(), xt::newaxis()) * xt::view(prev_inputs_[0], xt::newaxis(), xt::all()));
+        gradients_[Weights] += xt::view(d_output, xt::all(), xt::newaxis()) * xt::view(prev_inputs_[0], xt::newaxis(), xt::all());
 
         // dB incremented by d_output
         gradients_[Biases] += d_output;

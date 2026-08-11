@@ -1,7 +1,7 @@
 #ifndef CAST_ACTIVATION_FUNCTION_
 #define CAST_ACTIVATION_FUNCTION_
 
-#include "tensor_graph/tensor_graph.hpp"
+#include "tensor_operator.hpp"
 
 
 namespace cast {
@@ -10,7 +10,10 @@ namespace cast {
 
 
 /**
-* Computes an element-wise function and its derivative across tensors
+* Computes an element-wise function and its derivative across tensors.
+*
+* Given a std::vector of parameters, each of type xt::xarray<double>, the function is computed
+* for each element of each parameter.
 */
 class ActivationFunction : public TensorOperator {
 public:
@@ -54,7 +57,9 @@ public:
     }
 
     /**
-    * Computes the Sigmoid activation function on each parameter in `inputs`
+    * Returns the Sigmoid activation function applied to each parameter in `inputs`
+    * @param inputs list of values to compute
+    * @return sigmoid(x) for each element of `inputs`
     */
     std::vector<xt::xarray<double>> compute(std::vector<xt::xarray<double>> inputs) override {
 
@@ -68,7 +73,9 @@ public:
     }
 
     /**
-    * Computes the gradient of Sigmoid for each parameter of `upstream_gradients`
+    * Returns the derivative of Sigmoid applied to each parameter of `upstream_gradients`.
+    * @param upstream_gradients list of values to compute
+    * @return d(Sigmoid(x))/dx for each element x of `inputs`
     */
     std::vector<xt::xarray<double>> compute_backwards_pass(std::vector<xt::xarray<double>> upstream_gradients) override {
         std::vector<xt::xarray<double>> output;

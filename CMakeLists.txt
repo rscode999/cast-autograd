@@ -9,7 +9,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Define source files
 set(SOURCES
     main.cpp
-    include/tensor_graph/tensor_operator.cpp
 )
 
 # Build the executable

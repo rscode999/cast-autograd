@@ -1,7 +1,7 @@
 #ifndef CAST_LOSS_CALCULATOR_
 #define CAST_LOSS_CALCULATOR_
 
-#include "tensor_graph/tensor_graph.hpp"
+#include "tensor_operator.hpp"
 
 #include <cassert>
 #include <string>
@@ -83,6 +83,8 @@ public:
         return sum_sq / (2.0 * static_cast<double>(predicted.size()));
     }
 
+
+    
     /**
      * Returns the gradient of MSE loss between `predicted` and `expected`.
      * @param predicted model's predictions for a given input. Precondition: Non-empty

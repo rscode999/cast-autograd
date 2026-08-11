@@ -16,6 +16,7 @@ namespace cast {
 
 
 
+
 /**
 * Updates weights of a network's layers
 */
@@ -23,7 +24,8 @@ class Optimizer {
 public:
 
     /**
-    * Loads the optimizer with all information needed for training 
+    * Loads the optimizer with all information needed for training.
+    * @param operators network components to optimize
     */
     virtual void initialize(std::vector<std::shared_ptr<TensorOperator>> operators) = 0;
 
@@ -34,6 +36,7 @@ public:
     * Mutates `operators`.
     *
     * @param operators network operators to update
+    * @param zero_grad whether to set each operator's gradients to 0, after computing the optimization pass
     */
     virtual void step(std::vector<std::shared_ptr<TensorOperator>> operators, bool zero_grad) = 0;
 };
@@ -89,23 +92,24 @@ public:
 
 
     /**
-    * Updates `operators` using SGD.
+    * Updates `operators` using SGD. Any non-layer (i.e. operators that are not subclasses of `Layer`) are ignored.
     *
     * Mutates `operators`.
     * @param operators layers to update
+    * @param zero_grad whether to set each operator's gradients to 0, after computing the optimization pass
     */
     void step(std::vector<std::shared_ptr<TensorOperator>> operators, bool zero_grad = true) override {
 
         for (int32_t l = 0; l < (int32_t)operators.size(); l++) {
             // Check if this operator is a subclass of Layer. If not, skip it
-            std::shared_ptr<Layer> current_layer = std::dynamic_pointer_cast<Layer>(operators[l]);
+            auto current_layer = std::dynamic_pointer_cast<Layer>(operators[l]);
             if(current_layer == nullptr) {
                 continue;
             }
 
-            std::vector<xt::xarray<double>>& params = current_layer->parameters();
-            std::vector<xt::xarray<double>>& grads = current_layer->gradients();
-            std::vector<xt::xarray<double>>& vels = velocities_[l];
+            auto& params = current_layer->parameters();
+            auto& grads = current_layer->gradients();
+            auto& vels = velocities_[l];
 
             // Do SGD update on each of the layer's parameters
             for(int32_t i = 0; i < current_layer->parameters().size(); i++) {
@@ -114,8 +118,6 @@ public:
 
                 //param = param - v
                 params[i] -= vels[i];
-
-                // std::cout << "params updated to " << params[i] << std::endl;
                 
                 //set gradients to 0
                 if(zero_grad) {
@@ -125,6 +127,7 @@ public:
         }
     }
 };
+
 
 
 
