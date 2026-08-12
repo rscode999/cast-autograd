@@ -16,6 +16,7 @@
 
 
 
+
 namespace cast {
 
 
@@ -84,13 +85,34 @@ public:
     Network() : enabled_(false) {      
     };
 
+
+    /**
+    * @return number of branches currently in the network
+    */
+    int32_t active_branches() const {
+        return (int32_t)leaf_node_indices_.size();
+    }
+
+
+
+    /**
+    * @return 0-based indices of the ends of each branch
+    */
+    std::vector<int32_t> active_branch_indices() const {
+        return leaf_node_indices_;
+    }
+
     
 
     /**
      * Registers `op` as the next operator to execute in the network
-     * @param op new operator to add
+     * @param op new operator to add. Non-null
+     * @param branch_index 0-based index where the operator should be added
+     * @throws `std::logic_error` if the branch index is out of range
      */
     void add_operator(std::shared_ptr<TensorOperator> op, int32_t branch_index = 0) {
+        str_assert(op != nullptr, "New operator cannot be nullptr");
+
         operators_.push_back(op);
 
         //First operator loaded: Add the current node as an output
@@ -118,9 +140,11 @@ public:
 
     /**
      * Sets this network's loss calculator to `calc`.
-     * @param calc new loss calculator to use
+     * @param calc new loss calculator to use. Non-null
      */
     void set_loss_calculator(std::shared_ptr<LossCalculator> calc) {
+        str_assert(calc != nullptr, "New loss calculator must be non-null");
+
         //Reset the loss calculator if it exists
         if(loss_calc_) {
             loss_calc_.reset();
@@ -134,9 +158,11 @@ public:
 
     /**
      * Sets this network's optimizer to `optim`.
-     * @param optim new optimizer to use
+     * @param optim new optimizer to use. Non-null
      */
     void set_optimizer(std::shared_ptr<Optimizer> optim) {
+        str_assert(optim != nullptr, "New optimizer must be non-null");
+
         //Reset optimizer if it exists
         if(optimizer_) {
             optimizer_.reset();
@@ -278,7 +304,7 @@ public:
      *
      * To use this method, the network must be enabled.
      *
-     * WARNING: Calling `optimize` multiple times, without computing a `backward` operation,
+     * WARNING: Calling `optimize` multiple times, without computing a `backward` operation prior,
      * wil cause the network to use its stored gradients multiple times.
      * @param zero_grad whether to set all operator's gradients to 0 after computing the optimization pass
      */
@@ -287,7 +313,7 @@ public:
             throw invalid_config("Must enable the network prior to optimizing"); 
         }
 
-        optimizer_->step(operators_, zero_grad);
+        optimizer_->step(zero_grad);
         output_ = xt::zeros_like(output_);
     }
 

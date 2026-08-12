@@ -1,6 +1,7 @@
 #ifndef CAST_ACTIVATION_FUNCTION_
 #define CAST_ACTIVATION_FUNCTION_
 
+#include "cast_exceptions.hpp"
 #include "tensor_operator.hpp"
 
 
@@ -58,10 +59,11 @@ public:
 
     /**
     * Returns the Sigmoid activation function applied to each parameter in `inputs`
-    * @param inputs list of values to compute
+    * @param inputs list of values to compute. Non-empty
     * @return sigmoid(x) for each element of `inputs`
     */
     std::vector<xt::xarray<double>> compute(std::vector<xt::xarray<double>> inputs) override {
+        str_assert(inputs.size() > 0, "Input vector must be non-empty");
 
         std::vector<xt::xarray<double>> output = {};
         for(xt::xarray<double> params : inputs) {
@@ -74,17 +76,26 @@ public:
 
     /**
     * Returns the derivative of Sigmoid applied to each parameter of `upstream_gradients`.
-    * @param upstream_gradients list of values to compute
+    * YOU MUST HAVE PREVIOUSLY USED THIS OBJECT'S `compute` METHOD TO GET A RESULT.
+    * @param upstream_gradients list of values to compute. Non-empty
     * @return d(Sigmoid(x))/dx for each element x of `inputs`
     */
     std::vector<xt::xarray<double>> compute_backwards_pass(std::vector<xt::xarray<double>> upstream_gradients) override {
+        str_assert(upstream_gradients.size() > 0, "Upstream gradients in Sigmoid backwards pass must be non-empty");
+        str_assert(prev_outputs_.size() == upstream_gradients.size(), "The forward-pass Sigmoid function must have been previously computed on an input of the same length as `upstream_gradients`");
+
         std::vector<xt::xarray<double>> output;
         output.reserve(upstream_gradients.size());
 
         // sigmoid(x) * (1.0 - sigmoid(x));
         for(int32_t i = 0; i < (int32_t)upstream_gradients.size(); i++) {
+            str_assert(prev_outputs_[i].shape() == upstream_gradients[i].shape(), "Upstream gradient element " + std::to_string(i) + " shape does not match the previous input's shape");
             output.push_back(upstream_gradients[i] * prev_outputs_[i] * (1 - prev_outputs_[i]));
         }
+
+        //Clear the previous outputs
+        prev_outputs_.clear();
+        
         return output;
     }
 };

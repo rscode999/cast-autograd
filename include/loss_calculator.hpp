@@ -1,9 +1,9 @@
 #ifndef CAST_LOSS_CALCULATOR_
 #define CAST_LOSS_CALCULATOR_
 
+#include "cast_exceptions.hpp"
 #include "tensor_operator.hpp"
 
-#include <cassert>
 #include <string>
 #include <xtensor/containers/xarray.hpp>
 
@@ -16,12 +16,32 @@ namespace cast {
  * Computes loss, the error between the expected and predicted network outputs
  */
 class LossCalculator {
-public:
-
+protected:
     /**
-     * Creates a new LossCalculator
-     */
-    LossCalculator() = default;
+    * Asserts that `predicted` and `expected` are non-empty and of the same shape.
+    *
+    * Does nothing if `NDEBUG` is defined.
+    * @param predicted predictions for a given input
+    * @param expected expected predictions for the same input
+    */
+    void assert_nonempty_same_shape(xt::xarray<double> predicted, xt::xarray<double> expected) const {
+        #ifndef NDEBUG
+
+        str_assert(predicted.size() > 0, "Predicted value must be non-empty");
+
+        xt::svector<std::size_t> predicted_shape = predicted.shape();
+        xt::svector<std::size_t> expected_shape = expected.shape();
+        str_assert(expected_shape.size() == predicted_shape.size(), "Expected value (" + std::to_string(expected_shape.size()) + ") must have the same rank as predicted (" + std::to_string(predicted_shape.size()) + ")");
+        
+        for(int i = 0; i < predicted_shape.size(); i++) {
+            str_assert(predicted_shape[i] == expected_shape[i], "Predicted shape and expected shape mismatch on axis " + std::to_string(i));
+        }
+
+        #endif
+    }
+
+
+public:
 
 
     /**
@@ -62,6 +82,11 @@ class MeanSquaredError : public LossCalculator {
 public:
 
     /**
+    * Creates a new MSE loss calculator
+    */
+    MeanSquaredError() = default;
+
+    /**
      * @return the string "mean_squared_error"
      */
     std::string name() override {
@@ -70,14 +95,12 @@ public:
 
     /**
      * Returns the computed Mean Squared Error loss between `predicted` and `expected`.
-     * @param predicted model's predictions for a given input. Precondition: Non-empty
-     * @param expected what the model should have predicted for a given input. Precondition: Has the same number of elements as `predicted`
+     * @param predicted model's predictions for a given input. Non-empty
+     * @param expected what the model should have predicted for a given input. Has the same shape as `predicted`
      * @return MSE loss between `predicted` and `expected`.
      */
     double compute(xt::xarray<double> predicted, xt::xarray<double> expected) const override {
-
-        assert(predicted.size() > 0 && "Predicted input must be non-empty");
-        assert(predicted.size() == expected.size() && "Number of elements in predicted and expected must match");
+        assert_nonempty_same_shape(predicted, expected);
 
         double sum_sq = xt::sum(xt::square(predicted - expected))();
         return sum_sq / (2.0 * static_cast<double>(predicted.size()));
@@ -87,15 +110,13 @@ public:
     
     /**
      * Returns the gradient of MSE loss between `predicted` and `expected`.
-     * @param predicted model's predictions for a given input. Precondition: Non-empty
-     * @param expected what the model should have predicted for a given input. Precondition: Has the same number of elements as `predicted`
+     * @param predicted model's predictions for a given input. Non-empty
+     * @param expected what the model should have predicted for a given input. Has the same number of elements as `predicted`
      * @return gradient of MSE loss between `predicted` and `expected` wrapped in a Tensor
      */
     xt::xarray<double> compute_gradient(xt::xarray<double> predicted, xt::xarray<double> expected) const override {
+        assert_nonempty_same_shape(predicted, expected);
 
-        assert(predicted.size() > 0 && "Predicted input must be non-empty");
-        assert(predicted.size() == expected.size() && "Number of elements in predicted and expected must match");
-        
         xt::xarray<double> grad_data = (predicted - expected) / predicted.size();
         return grad_data;
     }
