@@ -3,11 +3,13 @@
 
 
 #include "cast_exceptions.hpp"
+#include "control_flow.hpp"
 #include "activation_function.hpp"
 #include "loss_calculator.hpp"
 #include "optimizer.hpp"
 #include "tensor_operator.hpp"
 
+#include <cstdint>
 #include <iostream>
 #include <memory>
 #include <unordered_map>
@@ -121,13 +123,33 @@ public:
         }
         //Handle branch index out of range
         else if(branch_index < 0 || branch_index >= leaf_node_indices_.size()) {
-            throw std::logic_error("Branch index out of range");
+            throw std::logic_error("Branch index out of range (max index " + std::to_string(leaf_node_indices_.size() - 1) + ", received " + std::to_string(branch_index) + ")");
         }
         //Otherwise: The currently added leaf node index is incremented
         else {
             //Load the recently added operator's predecessor index
             op->predecessors_.clear();
             op->predecessors_.push_back(leaf_node_indices_[branch_index]);
+
+            //Handle branches
+            if(std::shared_ptr<Branch> branch = std::dynamic_pointer_cast<Branch>(op)) {
+                //Add new possible branches, marking the branch's index as successors
+                int32_t branch_index = (int32_t)operators_.size() - 1;
+                for(int32_t i = 0; i < branch->branch_count() - 1; i++) {
+                    leaf_node_indices_.push_back(branch_index);
+                }
+            }
+
+            //Handle combiners
+            if(std::shared_ptr<Combiner> combiner = std::dynamic_pointer_cast<Combiner>(op)) {
+                check if indices used are valid
+
+                //Set all branches in the combiner's list to be predecessors to the new combiner
+                int32_t combiner_index = (int32_t)operators_.size() - 1;
+                for(int32_t i = 0; i < (int32_t)combiner->branch_indices().size(); i++) {
+                    operators_[leaf_node_indices_[i]] ->successors_ .push_back(combiner_index);
+                }
+            }
 
             //Register recently added node as the current branch leaf node's successor
             operators_[leaf_node_indices_[branch_index]]->successors_.push_back( (int32_t)operators_.size() - 1 );
@@ -185,14 +207,35 @@ public:
             throw invalid_config("Network needs a defined optimizer");
         }
 
-        // for(std::shared_ptr<TensorOperator> op : operators_) {
-        //     std::cout << op->name() << " ";
-        //     std::cout << "successors: ";
-        //     for(int32_t successor_idx : op->successors_) {
-        //         std::cout << successor_idx << ", ";
-        //     }
-        //     std::cout << std::endl;
+        // //Check for single output
+        // if(leaf_node_indices_.size() != 1) {
+        //     throw invalid_config("Network must have exactly one output; instead found " + std::to_string(leaf_node_indices_.size()));
         // }
+
+        for(std::shared_ptr<TensorOperator> op : operators_) {
+            std::cout << op->name() << " ";
+            std::cout << "predecessors: ";
+            for(int32_t successor_idx : op->predecessors_) {
+                std::cout << successor_idx << ", ";
+            }
+            std::cout << "\n";
+        }
+        std::cout << "\n" << std::endl;
+
+        for(std::shared_ptr<TensorOperator> op : operators_) {
+            std::cout << op->name() << " ";
+            std::cout << "successors: ";
+            for(int32_t successor_idx : op->successors_) {
+                std::cout << successor_idx << ", ";
+            }
+            std::cout << std::endl;
+        }
+
+        std::cout << "LEAF NODE INDICES" << std::endl;
+        for(int32_t l : leaf_node_indices_) {
+            std::cout << l << ", ";
+        }
+        std::cout << std::endl;
 
         optimizer_->initialize(operators_);
 

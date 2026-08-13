@@ -3,10 +3,14 @@
 #include "include/loss_calculator.hpp"
 #include "include/network.hpp"
 
+using namespace std;
+using namespace xt;
+using namespace cast;
+
+
+
 void test_xor() {
-  using namespace std;
-  using namespace xt;
-  using namespace cast;
+
 
   Network net = Network();
 
@@ -58,6 +62,34 @@ void test_xor() {
   }
 }
 
+
+
+void test_branches() {
+    /*
+    architecture:
+    l1 > sigmoid > branch 0  > l1 (3) > branch (5)     > sigmoid (6)
+                          1  > l1 (4)  > l1 (8)      2 > sigmoid (7)
+    */
+
+    Network net;
+
+    net.set_loss_calculator(make_shared<MeanSquaredError>());
+    net.set_optimizer(make_shared<SGD>(0.02, 0.9));
+
+    net.add_operator(make_shared<Linear1d>(2, 3));
+    net.add_operator(make_shared<Sigmoid>());
+    net.add_operator(make_shared<Branch>(2));
+    net.add_operator(make_shared<Linear1d>(3, 4));
+
+    net.add_operator(make_shared<Linear1d>(3, 4), 1);
+    net.add_operator(make_shared<Branch>(2));
+    net.add_operator(make_shared<Sigmoid>(), 0);
+    net.add_operator(make_shared<Sigmoid>(), 2);
+    
+    net.add_operator(make_shared<Linear1d>(3, 4), 1);
+
+    net.enable();
+}
 
 
 int main() {
