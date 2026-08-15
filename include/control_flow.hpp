@@ -15,14 +15,13 @@ namespace cast {
 * Breaks a network into one or more separate paths of execution
 */
 class Branch : public TensorOperator {
-private:
+protected:
     /**
     * Number of separate execution paths taken by this branch
     */
     int32_t branch_count_;
 
 public:
-    friend class Network;
 
     /**
     * Creates a new branch that splits execution into `branch_count` paths.
@@ -35,7 +34,7 @@ public:
     }
 
 
-    std::string name() const override {
+    virtual std::string name() const override {
         return "branch";
     }
 
@@ -45,13 +44,40 @@ public:
     }
 
 
-    std::vector<xt::xarray<double>> compute(std::vector<xt::xarray<double>>) override {
-        throw not_implemented();
+    /**
+    * USE THIS METHOD!
+    */
+    virtual std::vector<std::vector<xt::xarray<double>>> compute(std::vector<std::vector<xt::xarray<double>>> inputs) {
+        str_assert(inputs.size() == 1, "The branch must receive exactly one input; instead got " + std::to_string(inputs.size()));
+
+        std::vector<std::vector<xt::xarray<double>>> out;
+
+        //Clone the single input into the output
+        for(int32_t i = 0; i < branch_count_; i++) {
+            out.push_back(inputs[0]);
+        }
+
+        return out;
     }
 
 
-    std::vector<xt::xarray<double>> compute_backwards_pass(std::vector<xt::xarray<double>>) override {
-        throw not_implemented();
+    virtual std::vector<std::vector<xt::xarray<double>>> compute_backwards_pass(std::vector<std::vector<xt::xarray<double>>> branch_outputs) {
+        throw not_implemented("TO DO");
+    }
+
+
+    /**
+    * DO NOT USE! Throws `cast::not_implemented`. The method exists solely to implement a virtual method.
+    */
+    std::vector<xt::xarray<double>> compute(std::vector<xt::xarray<double>> unused) override {
+        throw not_implemented("Does not exist");
+    }
+
+    /**
+    * DO NOT USE! Throws `cast::not_implemented`. The method exists solely to implement a virtual method.
+    */
+    std::vector<xt::xarray<double>> compute_backwards_pass(std::vector<xt::xarray<double>> unused) override {
+        throw not_implemented("Does not exist");
     }
 };
 
@@ -65,7 +91,6 @@ private:
     std::vector<int32_t> branch_indices_;
 
 public:
-    friend class Network;
 
     /**
     * Creates a new combiner that pools execution from the branches given at `branch_indices`.
@@ -86,13 +111,44 @@ public:
     }
 
 
-    std::vector<xt::xarray<double>> compute(std::vector<xt::xarray<double>>) override {
-        throw not_implemented();
+
+    /**
+    * USE THIS METHOD!
+    * @param inputs list of layer outputs. Has length >= 1, and each element has the same size and matching corresponding shapes
+    */
+    virtual std::vector<std::vector<xt::xarray<double>>> compute(std::vector<std::vector<xt::xarray<double>>> predecessors_outputs) {
+        str_assert(predecessors_outputs.size() > 0, "Combiner requires at least 1 input");
+
+        //Initialize sums
+        std::vector<xt::xarray<double>> sums;
+        for(xt::xarray<double> first_pred_output : predecessors_outputs[0]) {
+            sums.push_back(xt::zeros_like(first_pred_output));
+        }
+
+        //Calculate the sums
+        for(std::vector<xt::xarray<double>> predecessor_output : predecessors_outputs) { switch to normal for loop
+            for(int32_t i = 0; i < (int32_t)predecessor_output.size(); i++) {
+                str_assert(predecessor_output[i].shape() == sums[i].shape(), "element " + std::to_string(i) + " must have the same shapes as element 0");
+                sums[i] += predecessor_output[i];
+            }
+        }
+
+        return {sums};
     }
 
 
-    std::vector<xt::xarray<double>> compute_backwards_pass(std::vector<xt::xarray<double>>) override {
-        throw not_implemented();
+    /**
+    * DO NOT USE! Throws `cast::not_implemented`. The method exists solely to implement a virtual method.
+    */
+    std::vector<xt::xarray<double>> compute(std::vector<xt::xarray<double>> unused) override {
+        throw not_implemented("Does not exist");
+    }
+
+    /**
+    * DO NOT USE! Throws `cast::not_implemented`. The method exists solely to implement a virtual method.
+    */
+    std::vector<xt::xarray<double>> compute_backwards_pass(std::vector<xt::xarray<double>> unused) override {
+        throw not_implemented("Does not exist");
     }
 };
 

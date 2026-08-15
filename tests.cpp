@@ -10,8 +10,6 @@ using namespace cast;
 
 
 void test_xor() {
-
-
   Network net = Network();
 
   //(2,4) -> (4,1)
@@ -90,6 +88,90 @@ void test_branches() {
 
     net.enable();
 }
+
+
+
+void test_combiners_simple() {
+    /*
+    architecture:
+    l1 > sigmoid > branch 0  > l1 (3) > combiner 0,1 (5)
+                          1  > l1 (4) ^
+    */
+
+    Network net;
+
+    net.set_loss_calculator(make_shared<MeanSquaredError>());
+    net.set_optimizer(make_shared<SGD>(0.02, 0.9));
+
+    net.add_operator(make_shared<Linear1d>(2, 3));
+    net.add_operator(make_shared<Sigmoid>());
+    net.add_operator(make_shared<Branch>(2));
+    net.add_operator(make_shared<Linear1d>(3, 4));
+
+    net.add_operator(make_shared<Linear1d>(3, 4), 1);
+    net.add_operator(shared_ptr<Combiner>(new Combiner{1}));
+
+    net.enable();
+}
+
+
+
+
+void test_combiners_compound() {
+    /*
+    architecture:
+    l1 > branch (1)  0 > sigmoid (2) >  combiner 0,1 (6)
+                     1 > l1 (3)      > combiner 1,2  (5)
+                     2 > sigmoid (4) ^
+    */
+
+    Network net;
+
+    net.set_loss_calculator(make_shared<MeanSquaredError>());
+    net.set_optimizer(make_shared<SGD>(0.02, 0.9));
+
+    net.add_operator(make_shared<Linear1d>(2, 3));
+
+    net.add_operator(make_shared<Branch>(3));
+    net.add_operator(make_shared<Sigmoid>());
+    net.add_operator(make_shared<Linear1d>(2, 3), 1);
+    net.add_operator(make_shared<Sigmoid>(), 2);
+
+    net.add_operator(shared_ptr<Combiner>(new Combiner{2}), 1);
+    net.add_operator(shared_ptr<Combiner>(new Combiner{1}));
+
+    net.enable();
+}
+
+
+
+void test_combiners_other_branches() {
+        /*
+    architecture:
+    l1 > branch (1)  0 > sigmoid (2) \
+                     1 > l1 (3)      > combiner 1 (5) > combiner 2 (7)
+                     2 > sigmoid (4) > l1 (6)         ^
+    */
+
+    Network net;
+
+    net.set_loss_calculator(make_shared<MeanSquaredError>());
+    net.set_optimizer(make_shared<SGD>(0.02, 0.9));
+
+    net.add_operator(make_shared<Linear1d>(2, 3));
+
+    net.add_operator(make_shared<Branch>(3));
+    net.add_operator(make_shared<Sigmoid>());
+    net.add_operator(make_shared<Linear1d>(2, 3), 1);
+    net.add_operator(make_shared<Sigmoid>(), 2);
+
+    net.add_operator(shared_ptr<Combiner>(new Combiner{0}), 1);
+    net.add_operator(make_shared<Linear1d>(2, 3), 2);
+    net.add_operator(shared_ptr<Combiner>(new Combiner{2}), 1);
+
+    net.enable();
+}
+
 
 
 int main() {

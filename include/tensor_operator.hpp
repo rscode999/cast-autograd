@@ -63,6 +63,22 @@ public:
 
 
     /**
+    * @return indices to this operator's inputs
+    */
+    std::vector<int32_t> predecessors() const {
+        return predecessors_;
+    }
+
+
+    /**
+    * @return indices to this operator's outputs
+    */
+    std::vector<int32_t> successors() const {
+        return successors_;
+    }
+
+
+    /**
      * Returns the results of this operation on `inputs`.
      *
      * The operator can have one or more inputs, and one or more outputs
