@@ -174,6 +174,33 @@ void test_combiners_other_branches() {
 
 
 
+void test_branch_forward() {
+    Network net;
+
+    /*
+    l1 2-3 > branch (1)  0 > sigmoid (2) > combiner (5)
+                         1 > sigmoid (3) ^
+                         2 > sigmoid (4) ^
+    */
+    
+    net.set_optimizer(make_shared<SGD>(0.9, 0.02));
+    net.set_loss_calculator(make_shared<MeanSquaredError>());
+
+    net.add_operator(make_shared<Linear1d>(2, 3));
+
+    net.add_operator(make_shared<Branch>(3));
+    net.add_operator(make_shared<Sigmoid>(), 0);
+    net.add_operator(make_shared<Sigmoid>(), 1);
+    net.add_operator(make_shared<Sigmoid>(), 2);
+    net.add_operator(make_shared<Combiner>(initializer_list<int32_t>{1, 2}));
+
+    net.enable();
+
+    xt::xarray<double> out = net.forward({1, 2});
+    cout << "OUTPUT: " << out << endl;
+}
+
+
 int main() {
     test_xor();
 }

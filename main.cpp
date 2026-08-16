@@ -9,20 +9,29 @@ using namespace cast;
 
 
 int main() {
-    shared_ptr<Combiner> c = make_shared<Combiner>(initializer_list<int32_t>{0});
+    Network net;
+    net.set_loss_calculator(make_shared<MeanSquaredError>());
+    net.set_optimizer(make_shared<SGD>(0.02, 0.9));
 
-    std::vector<std::vector<xt::xarray<double>>> in;
-    for (int i = 0; i < 3; i++) {
-        in.push_back(std::vector<xt::xarray<double>>());
+    /*
+    l1 > branch (1)  0 > sigmoid (2)                                  >  combiner (7)
+                     1 > branch (3)   1 > sigmoid (4)  \\             
+                                      2 > sigmoid(5)  > combiner (6)  ^
+    */
 
+    net.add_operator(make_shared<Linear1d>(2, 3));
 
-        in[i].push_back({1, 2, 3});
-        in[i].push_back({1, 2});
-    }
+    net.add_operator(make_shared<Branch>(2));
+    net.add_operator(make_shared<Sigmoid>());
+    net.add_operator(make_shared<Branch>(2), 1);
+    net.add_operator(make_shared<Sigmoid>(), 1);
+    
+    net.add_operator(make_shared<Sigmoid>(), 2);
+    net.add_combiner(make_shared<Combiner>(initializer_list<int32_t>{1}), 2);
+    net.add_combiner(make_shared<Combiner>(initializer_list<int32_t>{2}), 0);
 
-    std::vector<std::vector<xt::xarray<double>>> out = c->compute(in);
+    net.enable();
 
-    for(xt::xarray<double> out_elem : out[0]) {
-        cout << out_elem << endl;
-    }
+    // xt::xarray<double> out = net.forward({1, 2});
+    // cout << "RESULT: " << out << endl;
 }

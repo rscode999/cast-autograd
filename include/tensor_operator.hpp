@@ -34,6 +34,11 @@ protected:
     std::vector<int32_t> successors_ = {};
 
     /**
+    * EXPERIMENTAL
+    */
+    int32_t branch_id_ = -69;
+
+    /**
     * Number of inputs allowed by this operation
     */
     int32_t n_inputs_ = ARBITARY_INPUT_COUNT;

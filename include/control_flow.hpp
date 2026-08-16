@@ -13,6 +13,8 @@ namespace cast {
 
 /**
 * Breaks a network into one or more separate paths of execution
+*
+* One predecessor, many successors
 */
 class Branch : public TensorOperator {
 protected:
@@ -47,7 +49,7 @@ public:
     /**
     * USE THIS METHOD!
     */
-    virtual std::vector<std::vector<xt::xarray<double>>> compute(std::vector<std::vector<xt::xarray<double>>> inputs) {
+    virtual std::vector<std::vector<xt::xarray<double>>> compute(std::vector<std::vector<xt::xarray<double>>> inputs, bool tag) {
         str_assert(inputs.size() == 1, "The branch must receive exactly one input; instead got " + std::to_string(inputs.size()));
 
         std::vector<std::vector<xt::xarray<double>>> out;
@@ -83,12 +85,27 @@ public:
 
 
 
+
+
 /**
 * Collapses control flow from one or more other branches into the branch that this object is added to.
+*
+* Multiple predecessors, one successor
 */
 class Combiner : public TensorOperator {
-private:
+protected:
+    /**
+    * 0-based indices in the network's operator list (excluding the branch that the Combiner is added to) 
+    * that will be merged.
+    */
     std::vector<int32_t> branch_indices_;
+
+    /**
+    * Outputs from each branch that is merged by this Combiner. Index `i` corresponds to the output from branch `branch_indices_[i]`.
+    *
+    * Starts EMPTY.
+    */
+    std::vector<std::vector<xt::xarray<double>>> combined_predecessor_outputs_;
 
 public:
 
@@ -97,7 +114,9 @@ public:
     * @param branch_indices 0-based branch indices to combine. Has at least 1 element.
     */
     Combiner(std::initializer_list<int32_t> branch_indices) : branch_indices_(branch_indices)  {
-        str_assert(branch_indices.size() > 0, "Number of branch indices given must be at least 1");
+        str_assert(branch_indices.size() > 0, "Number of branch indices given must be at least 2");
+
+        combined_predecessor_outputs_.reserve(branch_indices.size());
     }
 
 
@@ -112,37 +131,48 @@ public:
 
 
 
+    // /**
+    // * DO NOT USE! Throws `cast::not_implemented`. The method exists solely to implement a virtual method.
+    // */
+    // std::vector<xt::xarray<double>> compute(std::vector<xt::xarray<double>> unused) override {
+    //     throw not_implemented("Does not exist");
+    // }
+
+
     /**
-    * USE THIS METHOD!
-    * @param inputs list of layer outputs. Has length >= 1, and each element has the same size and matching corresponding shapes
+    * Use this method!
+    * @param predecessor_outputs list of layer outputs. Has length >= 1, and each element has the same size and matching corresponding shapes
+    * @return sum of all outputs, or an empty vector if not all branches are combined
     */
-    virtual std::vector<std::vector<xt::xarray<double>>> compute(std::vector<std::vector<xt::xarray<double>>> predecessors_outputs) {
-        str_assert(predecessors_outputs.size() > 0, "Combiner requires at least 1 input");
+    std::vector<xt::xarray<double>> compute(std::vector<xt::xarray<double>> predecessor_outputs) override {
+        str_assert(predecessor_outputs.size() > 0, "Combiner requires at least 1 input");
 
-        //Initialize sums
-        std::vector<xt::xarray<double>> sums;
-        for(xt::xarray<double> first_pred_output : predecessors_outputs[0]) {
-            sums.push_back(xt::zeros_like(first_pred_output));
-        }
+        //Add the most recent input
+        combined_predecessor_outputs_.push_back(predecessor_outputs);
 
-        //Calculate the sums
-        for(std::vector<xt::xarray<double>> predecessor_output : predecessors_outputs) { switch to normal for loop
-            for(int32_t i = 0; i < (int32_t)predecessor_output.size(); i++) {
-                str_assert(predecessor_output[i].shape() == sums[i].shape(), "element " + std::to_string(i) + " must have the same shapes as element 0");
-                sums[i] += predecessor_output[i];
+        //Return the sum if all outputs have been combined
+        if(combined_predecessor_outputs_.size() == branch_indices_.size() + 1) {
+            std::vector<xt::xarray<double>> sum;
+        
+            //First input
+            for(int32_t o = 0; o < (int32_t)combined_predecessor_outputs_[0].size(); o++) {
+                sum.push_back(combined_predecessor_outputs_[0][o]);
             }
+            //All subsequent inputs
+            for(int32_t c = 1; c < (int32_t)combined_predecessor_outputs_.size(); c++) {
+                
+                for(int32_t o = 0; o < (int32_t)combined_predecessor_outputs_[c].size(); o++) {
+                    sum[o] += combined_predecessor_outputs_[c][o];
+                }
+                
+            }
+            return sum;
         }
 
-        return {sums};
+        //Not all outputs combined: Return the empty vector
+        return {};
     }
 
-
-    /**
-    * DO NOT USE! Throws `cast::not_implemented`. The method exists solely to implement a virtual method.
-    */
-    std::vector<xt::xarray<double>> compute(std::vector<xt::xarray<double>> unused) override {
-        throw not_implemented("Does not exist");
-    }
 
     /**
     * DO NOT USE! Throws `cast::not_implemented`. The method exists solely to implement a virtual method.
