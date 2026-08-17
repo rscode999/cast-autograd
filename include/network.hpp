@@ -13,6 +13,7 @@
 #include <iostream>
 #include <memory>
 #include <stdexcept>
+#include <queue>
 #include <xtensor/containers/xarray.hpp>
 
 
@@ -36,7 +37,7 @@ protected:
     /**
      * Operators that the network uses, in order
      */
-    std::vector<std::shared_ptr<TensorOperator>> operators_;
+    std::vector<std::shared_ptr<NetworkComponent>> operators_;
 
     /**
     * Indices in `operators_` that are leaf nodes, i.e. have no successors.
@@ -57,11 +58,9 @@ protected:
     xt::xarray<double> output_;
 
     /**
-    * Index of the last operator in the network.
-    *
-    * Determined after the `enable` check
+    * Number of branches created during the forward pass
     */
-    int32_t output_index_;
+    int32_t max_branch_index_;
 
  
     /**
@@ -111,10 +110,11 @@ public:
      * @param branch_index 0-based index where the operator should be added
      * @throws `std::logic_error` if the branch index is out of range
      */
-    void add_operator(std::shared_ptr<TensorOperator> op, int32_t branch_index = 0) {
+    void add_operator(std::shared_ptr<NetworkComponent> op, int32_t branch_index = 0) {
         str_assert(op != nullptr, "New operator cannot be nullptr");
 
         operators_.push_back(op);
+        op->branch_id_ = branch_index;
 
         //First operator loaded: Add the current node as an output
         if(leaf_node_indices_.size() == 0) {
@@ -130,16 +130,16 @@ public:
         }
         //Otherwise: The currently added leaf node index is incremented
         else {
-            //Load the recently added operator's predecessor index
+            //Load the recently added operator's predecessor branch and index
             op->predecessors_.clear();
-            op->predecessors_.push_back(leaf_node_indices_[branch_index]);
+            op->predecessors_[operators_[leaf_node_indices_[branch_index]]->branch_id_] = leaf_node_indices_[branch_index];
 
             //Handle combiners (separate function only)
             if(std::shared_ptr<Combiner> combiner = std::dynamic_pointer_cast<Combiner>(op)) {
                 throw not_implemented("Use add_combiner instead");
             }
             //Handle branches
-            else if(std::shared_ptr<Branch> branch = std::dynamic_pointer_cast<Branch>(op)) {
+            else if(std::shared_ptr<Splitter> branch = std::dynamic_pointer_cast<Splitter>(op)) {
                 //Add new possible branches, marking the branch's index as successors
                 int32_t branch_add_index = (int32_t)operators_.size() - 1;
                 for(int32_t i = 0; i < branch->branch_count() - 1; i++) {
@@ -148,7 +148,7 @@ public:
             }
 
             //Register recently added node as the current branch leaf node's successor
-            operators_[leaf_node_indices_[branch_index]]->successors_.push_back( (int32_t)operators_.size() - 1 );
+            operators_[leaf_node_indices_[branch_index]]->successors_[branch_index] = (int32_t)operators_.size() - 1;
             leaf_node_indices_[branch_index] = (int32_t)operators_.size() - 1;
         }
     }
@@ -157,50 +157,51 @@ public:
 
     void add_combiner(std::shared_ptr<Combiner> combiner, int32_t branch_index = 0) {
         operators_.push_back(combiner);
+        combiner->branch_id_ = branch_index;
 
-        //check if indices used are valid
+        //Verify branch index
+        if(branch_index < 0 || branch_index >= (int32_t)leaf_node_indices_.size()) {
+            throw std::logic_error("Branch index out of range");
+        }
+        // Check if indices used are valid
         if(combiner->branch_indices().size() > (int32_t)leaf_node_indices_.size()) {
             throw std::logic_error("Number of branches in combiner must be less than the number of branches in the network"); //TODO: Replace with Combiner-specific exception
         }
         for (int i = 0; i < (int32_t)combiner->branch_indices().size(); i++)  {
-            if(combiner->branch_indices() [i] < 0 || combiner->branch_indices() [i] >= (int32_t)leaf_node_indices_.size()) {
+            if(combiner->branch_indices()[i] < 0 || combiner->branch_indices()[i] >= (int32_t)leaf_node_indices_.size()) {
                 throw std::logic_error("Branch index out of range"); //TODO: Replace with Combiner-specific exception
             }
-            if(leaf_node_indices_[combiner->branch_indices() [i]] < 0) {
-                throw std::logic_error("Branch " + std::to_string(combiner->branch_indices() [i]) + " has been merged, so it no longer exists");
+            if(leaf_node_indices_[combiner->branch_indices()[i]] == NETWORK_BRANCH_COMBINED) {
+                throw std::logic_error("Branch " + std::to_string(combiner->branch_indices()[i]) + " has been merged, so it no longer exists");
             }
-            if(combiner->branch_indices() [i] == branch_index) {
+            if(combiner->branch_indices()[i] == branch_index) {
                 throw std::logic_error("Cannot merge the branch that the combiner is added to"); //TODO: Replace with Combiner-specific exception
             }
         }
 
-        
-        int32_t combiner_add_index = (int32_t)operators_.size() - 1;
-        for(int32_t i = 0; i < (int32_t)combiner->branch_indices().size(); i++) {
-            //Set all branches in the combiner's list to be predecessors to the new combiner
-            combiner -> predecessors_.push_back(leaf_node_indices_[ combiner->branch_indices()[i] ]);
-            
-            //Set the combiner to be successors to all branches in the combiner's list
-            operators_[leaf_node_indices_[ combiner->branch_indices()[i] ]] -> successors_ .push_back(combiner_add_index);
-        }
-        //Do the same with the combiner's own branch leaves
-        combiner -> predecessors_.push_back(leaf_node_indices_[ branch_index ]);
-        operators_[leaf_node_indices_[ branch_index ]] -> successors_ .push_back(combiner_add_index);
-        
-        //"Remove" all combined branches (perhaps use a hash map in the future)
-        for(int32_t l = 0; l < (int32_t)leaf_node_indices_.size(); l++) {
-            for(int32_t c = 0; c < (int32_t)combiner->branch_indices().size(); c++) {
-                //Leaf node index equals one that was combined: Take it out
-                if(l == combiner->branch_indices() [c]) {
-                    leaf_node_indices_[ combiner->branch_indices() [c] ] = NETWORK_BRANCH_COMBINED;
-                }
-            }
-            
+        int32_t combiner_node_index = (int32_t)operators_.size() - 1;
+        combiner->predecessors_.clear();
+
+        // 1. Add the branch that the combiner is added to into predecessors
+        int32_t target_leaf_idx = leaf_node_indices_[branch_index];
+        int32_t target_branch_id = operators_[target_leaf_idx]->branch_id_;
+        combiner->predecessors_[target_branch_id] = target_leaf_idx;
+        operators_[target_leaf_idx]->successors_[target_branch_id] = combiner_node_index;
+
+        // 2. Add all other combiner branch indices into predecessors and mark them as combined
+        for (int32_t combiner_branch_idx : combiner->branch_indices()) {
+            int32_t leaf_idx = leaf_node_indices_[combiner_branch_idx];
+            int32_t branch_id = operators_[leaf_idx]->branch_id_;
+
+            combiner->predecessors_[branch_id] = leaf_idx;
+            operators_[leaf_idx]->successors_[branch_index] = combiner_node_index;
+
+            // Mark branch as combined
+            leaf_node_indices_[combiner_branch_idx] = NETWORK_BRANCH_COMBINED;
         }
 
-        //Log the operator's branch
-        combiner->branch_id_ = branch_index;
-        leaf_node_indices_[branch_index] = (int32_t)operators_.size() - 1;
+        // 3. Update the leaf node index for the target branch to point to the combiner
+        leaf_node_indices_[branch_index] = combiner_node_index;
     }
 
 
@@ -256,9 +257,9 @@ public:
             throw invalid_config("Network must have at least one operator");
         }
 
-        //Check that the network's first element is not a branch
-        if(std::dynamic_pointer_cast<Branch>(operators_[0]) != nullptr) {
-            throw invalid_config("First operator in the network cannot be a branch");
+        //Check that the network's first element is not a splitter
+        if(std::dynamic_pointer_cast<Splitter>(operators_[0]) != nullptr) {
+            throw invalid_config("First operator in the network cannot be a splitter");
         }
 
         
@@ -275,32 +276,33 @@ public:
         //     throw invalid_config("Network must have exactly one output");
         // }
 
-        for(std::shared_ptr<TensorOperator> op : operators_) {
-            std::cout << op->name() << " ";
-            std::cout << "predecessors: ";
-            for(int32_t successor_idx : op->predecessors_) {
-                std::cout << successor_idx << ", ";
-            }
-            std::cout << "\n";
-        }
-        std::cout << "\n";
-        for(std::shared_ptr<TensorOperator> op : operators_) {
-            std::cout << op->name() << " ";
-            std::cout << "successors: ";
-            for(int32_t successor_idx : op->successors_) {
-                std::cout << successor_idx << ", ";
-            }
-            std::cout << std::endl;
-        }
-        std::cout << "\n";
-        std::cout << "LEAF NODE INDICES" << std::endl;
-        for(int32_t l : leaf_node_indices_) {
-            std::cout << l << ", ";
-        }
-        std::cout << std::endl;
+        // for(std::shared_ptr<NetworkComponent> op : operators_) {
+        //     std::cout << op->name() << " ";
+        //     std::cout << "predecessors: ";
+        //     for(std::pair<int32_t, int32_t> p : op->predecessors_) {
+        //         std::cout << p.first << ", " << p.second << ";   ";
+        //     }
+        //     std::cout << "\n";
+        // }
+        // std::cout << "\n";
+        // for(std::shared_ptr<NetworkComponent> op : operators_) {
+        //     std::cout << op->name() << " ";
+        //     std::cout << "successors: ";
+        //       for(std::pair<int32_t, int32_t> p : op->successors_) {
+        //         std::cout << p.first << ", " << p.second << ";   ";
+        //     }
+        //     std::cout << std::endl;
+        // }
+        // std::cout << "\n";
+        // std::cout << "LEAF NODE INDICES" << std::endl;
+        // for(int32_t l : leaf_node_indices_) {
+        //     std::cout << l << ", ";
+        // }
+        // std::cout << std::endl;
 
         optimizer_->initialize(operators_);
 
+        max_branch_index_ = 0;
         enabled_ = true;
     }
 
@@ -318,104 +320,91 @@ public:
             throw invalid_config("Must enable the network prior to training");
         }
 
-        //Cycle the input through the operators
-        std::vector<std::vector<xt::xarray<double>>> current_outputs = {{input}}; //Each index is the output(s) of a branch. Layers can have many outputs
-        std::vector<int32_t> next_operator_indices = {0}; //Each index is the next operator to compute
+        struct Task {
+            int32_t branch_id;
+            int32_t op_idx;
+            std::vector<xt::xarray<double>> data;
+        };
 
-        //PRECONDITION: There can be one, and exactly one, operator with no successors
-        bool successors_remaining = true;
-        while(successors_remaining) {
+        std::queue<Task> execution_queue;
+        execution_queue.push({0, 0, {input}});
 
-            //DEBUG
-            std::cout << "Current Outputs" << "\n";
-            for (int c = 0; c < current_outputs.size(); c++) {
-                for (int o = 0; o < current_outputs[c].size(); o++) {
-                    std::cout << current_outputs[c][o] << ", ";
-                }
-                std::cout << std::endl;
+        while(!execution_queue.empty()) {
+            Task current = execution_queue.front();
+            execution_queue.pop();
+
+            int32_t branch_id = current.branch_id;
+            int32_t op_idx = current.op_idx;
+
+            if (op_idx == NETWORK_BRANCH_COMBINED) {
+                continue;
             }
-            std::cout << "Next Op Indices" << "\n";
-            for(int32_t idx : next_operator_indices) {
-                std::cout << idx << ", ";
+
+            std::shared_ptr<NetworkComponent> current_op = operators_.at(op_idx);
+            // std::cout << "Executing " << current_op->name() << std::endl;
+
+            // Handle splitters
+            if (std::shared_ptr<Splitter> splitter = std::dynamic_pointer_cast<Splitter>(current_op)) {
+                std::vector<std::vector<xt::xarray<double>>> branch_output = splitter->compute(current.data, true);
+
+                auto successors = splitter->successors();
+                str_assert(!successors.empty(), "Branch must have at least one successor");
+
+                auto succ_it = successors.begin();
+
+                //Push all successors to the queue
+                for(size_t out_idx = 0; succ_it != successors.end(); ++succ_it, ++out_idx) {
+                    int32_t succ_branch_id = succ_it->first;
+                    int32_t succ_op_idx = succ_it->second;
+                    std::vector<xt::xarray<double>> out_data = branch_output[out_idx < branch_output.size() ? out_idx : 0];
+                    execution_queue.push({succ_branch_id, succ_op_idx, out_data});
+                }
             }
-            std::cout << "\n" << std::endl;
-
-            
-            //Compute one operation for each currently calculating branch
-            int32_t current_operator_amount = (int32_t)next_operator_indices.size();
-            for(int32_t op = 0; op < current_operator_amount; op++) {
-     
-                //The branch is empty: Continue
-                if(next_operator_indices[op] == NETWORK_BRANCH_COMBINED) {
-                    continue;
-                }
-
-
-                //Handle branches
-                if(std::shared_ptr<Branch> branch = std::dynamic_pointer_cast<Branch>(operators_[next_operator_indices[op]])) {
-
-                    std::vector<std::vector<xt::xarray<double>>> branch_outputs = branch->compute({{current_outputs[branch->branch_id_]}}, true);
-                    //Add all the new branch outputs
-                    current_outputs[0] = branch_outputs[0];
-                    for(int32_t b = 1; b < (int32_t)branch_outputs.size(); b++) {
-                        current_outputs.push_back(branch_outputs[b]);
-                    }
-
-                    std::vector<int32_t> successor_indices = branch->successors();
-                    //Update next to check
-                    // for(int32_t b = 0; b < (int32_t)successor_indices.size(); b++) {
-                    //     std::cout << successor_indices[b] << ", ";
-                    // }
-                    // std::cout << std::endl;
-                    next_operator_indices[0] = successor_indices[0];
-                    for(int32_t b = 1; b < (int32_t)successor_indices.size(); b++) {
-                        next_operator_indices.push_back(successor_indices[b]);
-                    }
-                }
-                //Handle combiners
-                else if(std::shared_ptr<Combiner> combiner = std::dynamic_pointer_cast<Combiner>(operators_[next_operator_indices[op]])) {
-                    std::vector<xt::xarray<double>> combiner_output = combiner->compute(current_outputs[op]);
-
-                    //Set the currently executing branch as waiting for the combiner to finish
-                    next_operator_indices[op] = NETWORK_BRANCH_COMBINED;
-                    current_outputs[op] = {};
+            // Handle combiners
+            else if(std::shared_ptr<Combiner> combiner = std::dynamic_pointer_cast<Combiner>(current_op)) {
+                std::vector<xt::xarray<double>> combiner_output = combiner->compute(current.data);
+                
+                // Combiner output is non-empty only when all required inputs have arrived
+                if(!combiner_output.empty()) {
+                    // std::cout << "Combiner is ready" << std::endl;
                     
-
-                    //The Combiner received all its inputs: The Combiner returns a non-empty vector
-                    if(combiner_output.size() != 0) {
-                        //Save combiner output
-                        current_outputs[combiner->branch_id_] = combiner_output;
-
-                        //Combiner has no successors: Terminate. The network can have exactly one output.
-                        if(combiner->successors() .size() == 0) {
-                            successors_remaining = false;
-                            current_outputs[0] = combiner_output;
-                            break;
-                        }
-
-                        //Assign successor to take the output
-                        next_operator_indices[op] = combiner->successors() [0];
+                    //No successors: Return
+                    if(combiner->successors().empty()) {
+                        // std::cout << "COMBINER HAS NO SUCCESSORS" << std::endl;
+                        output_ = combiner_output[0];
+                        return combiner_output[0];
                     }
-                }
-                //Handle single layers
-                else {
-                    //Get result
-                    current_outputs[op] = operators_[next_operator_indices[op]] -> compute(current_outputs[op]); //note: this is a single layer that may have multiple outputs
+
+                    auto const& succs = combiner->successors();
+                    str_assert(succs.size() == 1, "Combiner must have one successor");
                     
-                    //Next operator is a leaf: There can be only one network output, so exit the entire operation
-                    if(operators_[next_operator_indices[op]] -> successors_.size() == 0) {
-                        successors_remaining = false;
-                        break;
-                    }
+                    int32_t target_branch_id = succs.begin()->first;
+                    int32_t target_op_idx = succs.begin()->second;
 
-                    //Update next to check (Non-branches have exactly one successor, stored in index 0)
-                    next_operator_indices[op] = operators_[next_operator_indices[op]] -> successors_[0];
+                    execution_queue.push({target_branch_id, target_op_idx, combiner_output});
                 }
+            }
+            // Handle single operator
+            else {
+                std::vector<xt::xarray<double>> op_output = current_op->compute(current.data);
+
+                //No successors: Return (this is the single operator with no successors)
+                if(current_op->successors().empty()) {
+                    output_ = op_output[0];
+                    return op_output[0];
+                }
+
+                auto const& succs = current_op->successors();
+                str_assert(succs.size() == 1, "Operator must have exactly one successor");
+                
+                int32_t target_branch_id = succs.begin()->first;
+                int32_t target_op_idx = succs.begin()->second;
+
+                execution_queue.push({target_branch_id, target_op_idx, op_output});
             }
         }
-        
-        output_ = current_outputs[0][0];
-        return current_outputs[0][0];
+
+        throw std::runtime_error("Forward pass finished without reaching an output node.");
     }
 
 
@@ -430,38 +419,85 @@ public:
      * @param expected what the network should have predicted for the input
      */
     void backward(xt::xarray<double> predicted, xt::xarray<double> expected) {
+        if(!enabled_) {
+            throw invalid_config("Must enable the network prior to training");
+        }
 
-        //Compute initial loss
         xt::xarray<double> output_loss = loss_calc_->compute_gradient(predicted, expected);
 
-        std::vector<std::vector<xt::xarray<double>>> current_branch_gradients = {{output_loss}}; //Each index is the gradient(s) of a branch. Layers can have many outputs
-        std::vector<int32_t> prev_operator_indices = {output_index_};
+        struct Task {
+            int32_t branch_id;
+            int32_t op_idx;
+            std::vector<xt::xarray<double>> data;
+        };
 
-        //PRECONDITION: There can be one, and EXACTLY ONE, operator with no predecessors
-        bool predecessors_remaining = true;
-        while(predecessors_remaining && !prev_operator_indices.empty()) {
+        std::queue<Task> execution_queue;
+        int32_t output_op_idx = (int32_t)operators_.size() - 1;
+        int32_t output_branch_id = operators_[output_op_idx]->branch_id_;
+        
+        execution_queue.push({output_branch_id, output_op_idx, {output_loss}});
 
+        while(!execution_queue.empty()) {
+            Task current = execution_queue.front();
+            execution_queue.pop();
 
-            //Handle branches
-            if(false) {
+            int32_t branch_id = current.branch_id;
+            int32_t op_idx = current.op_idx;
+
+            if (op_idx == NETWORK_BRANCH_COMBINED) {
+                continue;
             }
-            //Handle single layers
-            else {
-                //Move to the previous operator, moving gradients backward
-                for(int32_t i = 0; i < (int32_t)prev_operator_indices.size(); i++) {
 
-                    //Propagate gradients, one operator down in the branch
-                    current_branch_gradients[i] = operators_[prev_operator_indices[i]] -> compute_backwards_pass(current_branch_gradients[i]);
+            std::shared_ptr<NetworkComponent> current_op = operators_.at(op_idx);
 
-                    //The ONE operator with no predecessors has just been backpropagated: Exit
-                    if(operators_[prev_operator_indices[i]]->predecessors_.size() == 0) {
-                        predecessors_remaining = false;
-                        break;
+            // Handle splitters (act like combiners in the backwards pass, collecting inputs)
+            if (std::shared_ptr<Splitter> splitter = std::dynamic_pointer_cast<Splitter>(current_op)) {
+                std::vector<xt::xarray<double>> branch_grads = splitter->compute_backwards_pass(current.data);
+
+                // Branch output is non-empty only when all required inputs have arrived
+                if (!branch_grads.empty()) {
+                    auto const& preds = splitter->predecessors();
+                    if (preds.empty()) {
+                        return;
                     }
 
-                    //Single layers have exactly one predecessor. Move there.
-                    prev_operator_indices[i] = operators_[prev_operator_indices[i]] -> predecessors_[0];
+                    // std::cout << "Output: " << branch_grads[0] << std::endl;
+                    
+                    str_assert(preds.size() == 1, "Splitter must have exactly one predecessor");
+                    auto pred_it = preds.begin();
+                    execution_queue.push({pred_it->first, pred_it->second, branch_grads});
                 }
+            }
+            // Handle combiners (act like splitters in the backwards pass, distributing gradients)
+            else if (std::shared_ptr<Combiner> combiner = std::dynamic_pointer_cast<Combiner>(current_op)) {
+                std::vector<std::vector<xt::xarray<double>>> combiner_outputs = combiner->compute_backwards_pass(current.data, true);
+
+                auto preds = combiner->predecessors();
+                str_assert(!preds.empty(), "Combiner must have at least one predecessor");
+
+                auto pred_it = preds.begin();
+                for (size_t out_idx = 0; pred_it != preds.end(); ++pred_it, ++out_idx) {
+                    int32_t pred_branch_id = pred_it->first;
+                    int32_t pred_op_idx = pred_it->second;
+                    std::vector<xt::xarray<double>> out_data = combiner_outputs[out_idx < combiner_outputs.size() ? out_idx : 0];
+                    execution_queue.push({pred_branch_id, pred_op_idx, out_data});
+                }
+            }
+            // Handle single operators
+            else {
+                std::vector<xt::xarray<double>> op_output = current_op->compute_backwards_pass(current.data);
+
+                auto const& preds = current_op->predecessors();
+                if (preds.empty()) {
+                    return;
+                }
+
+                str_assert(preds.size() == 1, "Operator must have exactly one predecessor");
+                auto pred_it = preds.begin();
+                int32_t pred_branch_id = pred_it->first;
+                int32_t pred_op_idx = pred_it->second;
+
+                execution_queue.push({pred_branch_id, pred_op_idx, op_output});
             }
         }
     }

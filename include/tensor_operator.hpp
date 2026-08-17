@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 
@@ -21,17 +22,19 @@ const int32_t ARBITARY_OUTPUT_COUNT = -100;
  * 
  * Tracks which operators come before and after this operator, by 0-based numerical index.
  */
-class TensorOperator : public std::enable_shared_from_this<TensorOperator> {
+class NetworkComponent : public std::enable_shared_from_this<NetworkComponent> {
 protected:
     /**
-     * Indices to all tensors that are computed, just prior to this operator receiving them
+     * Indices to all tensors that are computed, just prior to this operator receiving them.
+     * Mapping: branch number -> index of predecessor
      */
-    std::vector<int32_t> predecessors_ = {};
+    std::unordered_map<int32_t, int32_t> predecessors_;
     
     /**
-    * Indices to all tensors after computation by this operator
-    */
-    std::vector<int32_t> successors_ = {};
+     * Indices to all tensors that are computed, just after this operator calculated them.
+     * Mapping: branch number -> index of successor
+     */
+    std::unordered_map<int32_t, int32_t> successors_;
 
     /**
     * EXPERIMENTAL
@@ -70,7 +73,7 @@ public:
     /**
     * @return indices to this operator's inputs
     */
-    std::vector<int32_t> predecessors() const {
+    std::unordered_map<int32_t, int32_t> predecessors() const {
         return predecessors_;
     }
 
@@ -78,7 +81,7 @@ public:
     /**
     * @return indices to this operator's outputs
     */
-    std::vector<int32_t> successors() const {
+    std::unordered_map<int32_t, int32_t> successors() const {
         return successors_;
     }
 
@@ -111,7 +114,7 @@ public:
     /**
      * Properly destroys a tensor operator
      */
-    virtual ~TensorOperator() = default;
+    virtual ~NetworkComponent() = default;
 };
 
 

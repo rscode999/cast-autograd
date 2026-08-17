@@ -22,7 +22,7 @@ namespace cast {
 *
 * Note that layers can accept multiple inputs and give multiple outputs.
 */
-class Layer : public TensorOperator {
+class Layer : public NetworkComponent {
 protected:
 
     /**

@@ -16,7 +16,7 @@ namespace cast {
 * Given a std::vector of parameters, each of type xt::xarray<double>, the function is computed
 * for each element of each parameter.
 */
-class ActivationFunction : public TensorOperator {
+class ActivationFunction : public NetworkComponent {
 public:
 
     /**

@@ -27,7 +27,7 @@ public:
     * Loads the optimizer with all information needed for training.
     * @param operators network components to optimize
     */
-    virtual void initialize(std::vector<std::shared_ptr<TensorOperator>>& operators) = 0;
+    virtual void initialize(std::vector<std::shared_ptr<NetworkComponent>>& operators) = 0;
 
     /**
     * Updates the parameters of each Layer object in `operators` using each layer's stored gradients.
@@ -62,7 +62,7 @@ private:
     /**
     * Operators that this optimizer improves
     */
-    std::vector<std::shared_ptr<TensorOperator>> operators_;
+    std::vector<std::shared_ptr<NetworkComponent>> operators_;
 
     /**
     * Velocities for each parameter, for each operator.
@@ -89,14 +89,14 @@ public:
     * Loads the SGD optimizer with all information needed for training, taken from `operators`.
     * @param operators operators to optimize. Non-empty, and no element can be `nullptr`
     */
-    void initialize(std::vector<std::shared_ptr<TensorOperator>>& operators) override {
+    void initialize(std::vector<std::shared_ptr<NetworkComponent>>& operators) override {
         str_assert(operators.size() > 0, "Operator list must be non-empty");
 
         velocities_.clear(); // Clear out any old state if re-initializing
 
         operators_ = operators;
 
-        for (const std::shared_ptr<TensorOperator>& op : operators) {
+        for (const std::shared_ptr<NetworkComponent>& op : operators) {
             std::vector<xt::xarray<double>> layer_vels;
 
             str_assert(op != nullptr, "All operators in initialization cannot be nullptr");
