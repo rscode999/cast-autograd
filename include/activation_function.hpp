@@ -2,7 +2,8 @@
 #define CAST_ACTIVATION_FUNCTION_
 
 #include "cast_exceptions.hpp"
-#include "tensor_operator.hpp"
+#include "network_component.hpp"
+#include "operator.hpp"
 
 
 namespace cast {
@@ -16,7 +17,7 @@ namespace cast {
 * Given a std::vector of parameters, each of type xt::xarray<double>, the function is computed
 * for each element of each parameter.
 */
-class ActivationFunction : public NetworkComponent {
+class ActivationFunction : public Operator {
 public:
 
     /**
@@ -49,6 +50,13 @@ private:
 
 public:
 
+    /**
+    * @return deep pointer copy of this Sigmoid object
+    */
+    std::shared_ptr<NetworkComponent> shared_ptr_deep_copy() const override {
+        return std::make_shared<Sigmoid>(*this);
+    }
+
 
     /**
     * @return the string "sigmoid"
@@ -57,6 +65,8 @@ public:
         return "sigmoid";
     }
 
+
+    
     /**
     * Returns the Sigmoid activation function applied to each parameter in `inputs`
     * @param inputs list of values to compute. Non-empty
@@ -74,6 +84,8 @@ public:
         return output;
     }
 
+
+    
     /**
     * Returns the derivative of Sigmoid applied to each parameter of `upstream_gradients`.
     * YOU MUST HAVE PREVIOUSLY USED THIS OBJECT'S `compute` METHOD TO GET A RESULT.

@@ -20,20 +20,25 @@ int main() {
                          1 > branch (3)  1 > l1 4-1 (4) > sigmoid (6) > combiner (8) ^    
                                          2 > l1 4-1 (5) > sigmoid (7) ^
     */
-
+    /*
+    Alternate architecture to check safeguards
+    l1 2-4 > branch (1)  0 > l1 4-1                                   \\              > combiner (9)  
+                         1 > branch (3)  1 > l1 4-1 (4) > sigmoid (6) > combiner (8) ^    
+                                         2 > l1 4-1 (5) > sigmoid (7) 
+    */
     net.add_operator(make_shared<Linear1d>(2, 4));
 
-    net.add_operator(make_shared<Splitter>(2));
+    net.add_splitter(2);
     net.add_operator(make_shared<Linear1d>(4, 1));
-    net.add_operator(make_shared<Splitter>(2), 1);
+    net.add_splitter(2, 1);
     net.add_operator(make_shared<Linear1d>(4, 1), 1);
     
     net.add_operator(make_shared<Linear1d>(4, 1), 2);
     net.add_operator(make_shared<Sigmoid>(), 1);
     net.add_operator(make_shared<Sigmoid>(), 2);
-    net.add_combiner(std::shared_ptr<Combiner>(new Combiner{2}), 1);
+    net.add_combiner({2}, 1);
 
-    net.add_combiner(std::shared_ptr<Combiner>(new Combiner{1}), 0);
+    net.add_combiner({1}, 0);
   
     net.enable();
 
@@ -53,7 +58,7 @@ int main() {
     };
 
     
-    for(int e = 0; e < 100; e++) {
+    for(int e = 0; e < 1000; e++) {
 
         double loss = 0;
         for(int i = 0; i < (int)inputs.size(); i++) {
@@ -63,7 +68,7 @@ int main() {
             net.optimize();
         }
 
-        if(e % 50 == 0) {
+        if(e % 100 == 1) {
             std::cout << "Loss: " << loss << std::endl;
         }
     }

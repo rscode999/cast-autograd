@@ -47,6 +47,40 @@ public:
 
 
 /**
+ * Thrown to indicate that a network component was not added to the network properly.
+ * 
+ * Inherits from `std::exception`
+ */
+class bad_component_addition : public std::exception {
+private:
+    /**
+     * Error message set by the user
+     */
+    std::string message_;
+
+public:
+    /**
+     * Creates a new exception object with the message `error_message`, thrown at the location `throw_location`.
+     *
+     * The error message is: `error_message` + file of `throw_location` + line number of `throw_location`
+     * @param error_message message to be displayed on throw
+     * @param throw_location place where the exception was thrown
+     */
+    explicit bad_component_addition(std::string error_message = "", std::source_location throw_location = std::source_location::current()) : std::exception() {
+        message_ = error_message + ", file " + throw_location.file_name() + ", line " + std::to_string(throw_location.line());
+    }
+
+    /**
+     * @return the exception object's error message
+     */
+    const char* what() const noexcept override {
+        return message_.c_str();
+    }
+};
+
+
+
+/**
  * Thrown to indicate that a method is incomplete, and thus should not be used.
  * 
  * Inherits from `std::logic_error`

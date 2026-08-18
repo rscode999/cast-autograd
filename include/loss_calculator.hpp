@@ -2,7 +2,7 @@
 #define CAST_LOSS_CALCULATOR_
 
 #include "cast_exceptions.hpp"
-#include "tensor_operator.hpp"
+#include "network_component.hpp"
 
 #include <string>
 #include <xtensor/containers/xarray.hpp>
@@ -24,7 +24,7 @@ protected:
     * @param predicted predictions for a given input
     * @param expected expected predictions for the same input
     */
-    void assert_nonempty_same_shape(xt::xarray<double> predicted, xt::xarray<double> expected) const {
+    void assert_nonempty_same_shape_(xt::xarray<double> predicted, xt::xarray<double> expected) const {
         #ifndef NDEBUG
 
         str_assert(predicted.size() > 0, "Predicted value must be non-empty");
@@ -43,6 +43,10 @@ protected:
 
 public:
 
+    /**
+    * @return deep pointer copy of this loss calculator. The deep copy cannot be used to modify the original.
+    */
+    virtual std::shared_ptr<LossCalculator> shared_ptr_deep_copy() const = 0;
 
     /**
      * @return the calculator's identifying string. Defaults to "loss_calculator" if not overridden by an implementing class.
@@ -72,7 +76,7 @@ public:
 
 
 /**
- * Calculates Mean Squared Error loss.
+ * Calculates Mean Squared Error (MSE) loss.
  *
  * For each element in the output, MSE subtracts corresponding elements of the predicted and actual loss,
  * then squares the difference. The loss is the sum of the squared differences, divided by the number of 
@@ -86,6 +90,16 @@ public:
     */
     MeanSquaredError() = default;
 
+
+    /**
+    * @return deep pointer copy of this Sigmoid object
+    */
+    std::shared_ptr<LossCalculator> shared_ptr_deep_copy() const override {
+        return std::make_shared<MeanSquaredError>(*this);
+    }
+
+
+
     /**
      * @return the string "mean_squared_error"
      */
@@ -97,10 +111,10 @@ public:
      * Returns the computed Mean Squared Error loss between `predicted` and `expected`.
      * @param predicted model's predictions for a given input. Non-empty
      * @param expected what the model should have predicted for a given input. Has the same shape as `predicted`
-     * @return MSE loss between `predicted` and `expected`.
+     * @return MSE loss between `predicted` and `expected`
      */
     double compute(xt::xarray<double> predicted, xt::xarray<double> expected) const override {
-        assert_nonempty_same_shape(predicted, expected);
+        assert_nonempty_same_shape_(predicted, expected);
 
         double sum_sq = xt::sum(xt::square(predicted - expected))();
         return sum_sq / (2.0 * static_cast<double>(predicted.size()));
@@ -112,10 +126,10 @@ public:
      * Returns the gradient of MSE loss between `predicted` and `expected`.
      * @param predicted model's predictions for a given input. Non-empty
      * @param expected what the model should have predicted for a given input. Has the same number of elements as `predicted`
-     * @return gradient of MSE loss between `predicted` and `expected` wrapped in a Tensor
+     * @return gradient of MSE loss between `predicted` and `expected`
      */
     xt::xarray<double> compute_gradient(xt::xarray<double> predicted, xt::xarray<double> expected) const override {
-        assert_nonempty_same_shape(predicted, expected);
+        assert_nonempty_same_shape_(predicted, expected);
 
         xt::xarray<double> grad_data = (predicted - expected) / predicted.size();
         return grad_data;

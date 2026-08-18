@@ -1,6 +1,4 @@
-Status: XOR classifier converges using the vector-based graph.
+Status: Branched XOR classifier converges!
 
-NEXT MAJOR STEP: Implement network branches and add more network operators.
-- CRITICAL: Enforce preconditions in all functions
-- Set up github workflow for testing
-- Perhaps try the binary to one-hot converter?
+Remaining tasks:
+- Enforce component input constraints on network forward and backward pass

@@ -2,7 +2,7 @@
 #define CAST_LAYER_
 
 #include "cast_exceptions.hpp"
-#include "tensor_operator.hpp"
+#include "operator.hpp"
 
 #include <source_location>
 #include <string>
@@ -22,7 +22,7 @@ namespace cast {
 *
 * Note that layers can accept multiple inputs and give multiple outputs.
 */
-class Layer : public NetworkComponent {
+class Layer : public Operator {
 protected:
 
     /**
@@ -160,6 +160,10 @@ public:
         // Exclusively uses inputs and outputs of rank 1 (vectors).
         input_tensor_rank_ = 1;
         output_tensor_rank_ = 1;
+
+        //Exactly one input and one output.
+        n_inputs_ = 1;
+        n_outputs_ = 1;
         
         // PARAMETERS (weights, biases) - wrapped in Tensor
         parameters_.emplace_back(xt::random::randn<double>({output_dimension, input_dimension}, 0, 1));
@@ -173,6 +177,13 @@ public:
         prev_inputs_.emplace_back(xt::zeros<double>({input_dimension}));
     }
 
+
+    /**
+    * @return deep pointer copy of this layer object
+    */
+    std::shared_ptr<NetworkComponent> shared_ptr_deep_copy() const override {
+        return std::make_shared<Linear1d>(*this);
+    }
 
 
     /**

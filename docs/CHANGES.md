@@ -1,9 +1,27 @@
 # Change Log
 
+## 0.9.0
+*17 August 2026*
+
+Full implementation of branched network topologies.
+
+- Predecessors and successors within network components now use a `std::unordered_map` instead of a vector.
+    - Forward and backward pass computation use a queue-based approach. Each branch ID, index in the components vector, and the component's output is pushed to the queue after computation.
+- Splitters and Combiners properly compute their forward and backward passes
+- First successful convergence of a branched network
+    - XOR classifier converged (17 Aug 2026)
+- Renaming of classes:
+    - Branch is now Splitter. "Branch" has the definition of a separate path of execution in a network. 
+    - TensorOperator is now NetworkComponent.
+- Separate methods for adding Combiners, Splitters, and Operators (single-input, single-output components. Direct subclasses are the ActivationFunction and Layer)
+- Proper implementation of the `enable` check, along with verification when each new component is added to the network
+- All `std::shared_ptr`s added to the network become deep copies
+
 ## 0.7.0
 *10 August 2026*
 
 Overhaul of network creation.
+
 - Sequential layer addition. Branches are user-added.
     - Rationale: PyTorch-style custom network definition didn't work. Operators go out of scope when the `forward` method is called, so the network cannot access the operators in the backward pass
     - Each layer is stored in a std::vector. Layers track their predecessor and successor index upon addition.
@@ -16,6 +34,7 @@ New architecture converged to XOR dataset.
 *6 August 2026*
 
 First functional release
+
 - Implemented functionality from old CNet
     - Sequentially defined Network class
     - Linear 1d layer, Sigmoid activation function

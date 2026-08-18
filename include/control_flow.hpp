@@ -2,9 +2,10 @@
 #define CAST_CONTROL_FLOW_
 
 #include "cast_exceptions.hpp"
-#include "tensor_operator.hpp"
+#include "network_component.hpp"
 
 #include <initializer_list>
+#include <string>
 
 namespace cast {
 
@@ -38,9 +39,16 @@ public:
     */
     Splitter(int32_t branch_count) : branch_count_(branch_count) {
         str_assert(branch_count > 1, "Number of branches must be at least 2; instead got " + std::to_string(branch_count));
-        // predecessors_.resize(1);
-        // successors_.resize(branch_count);
     }
+
+
+    /**
+    * @return deep pointer copy of this Splitter object
+    */
+    std::shared_ptr<NetworkComponent> shared_ptr_deep_copy() const override {
+        return std::make_shared<Splitter>(*this);
+    }
+
 
 
     virtual std::string name() const override {
@@ -54,23 +62,31 @@ public:
 
 
     /**
-    * USE THIS METHOD!
+    * Returns `input` copied `branch_count()` times.
+    * @param input vector(s) to copy across multiple outputs. Non-empty.
+    * @param tag unused; required to distinguish this method from the overridden method that returns `std::vector<xt::xarray<double>>`
+    * @return vector of length `branch_count()`, where each index contains a copy of `input`
     */
-    virtual std::vector<std::vector<xt::xarray<double>>> compute(std::vector<xt::xarray<double>> inputs, bool tag) {
-        str_assert(inputs.size() == 1, "The branch must receive exactly one input; instead got " + std::to_string(inputs.size()));
+    virtual std::vector<std::vector<xt::xarray<double>>> compute(std::vector<xt::xarray<double>> input, bool tag) {
+        str_assert(input.size() >= 1, "The input must be non-empty");
 
         std::vector<std::vector<xt::xarray<double>>> out;
 
         //Clone the single input into the output
         for(int32_t i = 0; i < branch_count_; i++) {
-            out.push_back(inputs);
+            out.push_back(input);
         }
 
         return out;
     }
 
 
-
+    /**
+    * Returns the empty vector. Upon receiving the `branch_count()`-th input, returns the result of the splitter's backpropagation operation
+    * computed on all received inputs.
+    * @param successor_gradient single successor gradient. Size and shape of all its elements match those of the first given input
+    * @return empty vector, or backprop gradients (if all inputs are received)
+    */
     virtual std::vector<xt::xarray<double>> compute_backwards_pass(std::vector<xt::xarray<double>> successor_gradient) override {
         // Perform shape and size assertions if this is not the first input
         if (!successor_outputs_.empty()) {
@@ -158,6 +174,27 @@ protected:
     */
     std::vector<std::vector<xt::xarray<double>>> combined_predecessor_outputs_;
 
+
+    /**
+    * Uses `str_assert` to check that none of the combiner's branch indices equal the branch that the combiner is in, and that a branch index is assigned
+    *
+    * Does nothing if NDEBUG is defined.
+    * @param loc location of where this method is called
+    */
+    void assert_no_self_assign_(std::source_location loc = std::source_location::current()) {
+        #ifndef NDEBUG
+
+        str_assert(branch_id_ >= 0, "Combiner's branch ID must be a non-negative number");
+
+        int32_t current_branch_index = 0;
+        for(int32_t branch_index : branch_indices_) {
+            str_assert(branch_index != branch_id_, "Cannot assign the combiner to merge branches in its own branch, " + std::to_string(branch_id_), loc);
+            ++current_branch_index;
+        }
+
+        #endif
+    }
+
 public:
 
     /**
@@ -171,23 +208,39 @@ public:
     }
 
 
+    /**
+    * @return deep pointer copy of this Combiner object
+    */
+    std::shared_ptr<NetworkComponent> shared_ptr_deep_copy() const override {
+        return std::make_shared<Combiner>(*this);
+    }
+
+
+
+    /**
+    * @return list of branch IDs that this combiner merges. Does not include the combiner's own branch ID.
+    */
     std::vector<int32_t> branch_indices() const {
         return branch_indices_;
     }
 
 
+    /**
+    * @return the string "combiner"
+    */
     std::string name() const override {
         return "combiner";
     }
 
 
     /**
-    * Use this method!
-    * @param predecessor_outputs list of layer outputs. Has length >= 1, and each element has the same size and matching corresponding shapes
-    * @return sum of all outputs, or an empty vector if not all branches are combined
+    * Returns the empty vector. Upon receiving the `branch_indices().size()`-th input, returns the element-wise sum of all inputs given.
+    * @param predecessor_outputs list of layer outputs. Has length >= 1, and each element has the same size and matching corresponding shapes as the first input given
+    * @return sum of all inputs, or an empty vector if not all branches are combined
     */
     std::vector<xt::xarray<double>> compute(std::vector<xt::xarray<double>> predecessor_outputs) override {
         str_assert(predecessor_outputs.size() > 0, "Combiner requires at least 1 input");
+        assert_no_self_assign_();
 
         //Add the most recent input
         combined_predecessor_outputs_.push_back(predecessor_outputs);
@@ -204,6 +257,7 @@ public:
             for(int32_t c = 1; c < (int32_t)combined_predecessor_outputs_.size(); c++) {
                 
                 for(int32_t o = 0; o < (int32_t)combined_predecessor_outputs_[c].size(); o++) {
+                    str_assert(sum[o].shape() == combined_predecessor_outputs_[c][o].shape(), "Shape of input " + std::to_string(c) + ", index " + std::to_string(o) + " does not match the first input's shape");
                     sum[o] += combined_predecessor_outputs_[c][o];
                 }
                 
@@ -220,10 +274,14 @@ public:
 
 
     /**
-    * Use this method instead!
+    * Returns `prev_gradient` copied `branch_indices().size()` times.
+    * @param prev_gradient tensor(s) to copy across multiple outputs. Non-empty.
+    * @param tag unused; required to distinguish this method from the overridden method that returns `std::vector<xt::xarray<double>>`
+    * @return vector of length `branch_indices().size()`, where each index contains a copy of `prev_gradient`
     */
-    std::vector<std::vector<xt::xarray<double>>> compute_backwards_pass(std::vector<xt::xarray<double>> prev_gradient, bool tag) {
+    virtual std::vector<std::vector<xt::xarray<double>>> compute_backwards_pass(std::vector<xt::xarray<double>> prev_gradient, bool tag) {
         str_assert(prev_gradient.size() > 0, "Combiner backwards pass requires at least 1 element in the input gradient");
+        assert_no_self_assign_();
 
         // Determine how many predecessors this layer combines based on branch_indices_
         int32_t num_predecessors = (int32_t)branch_indices_.size() + 1;
