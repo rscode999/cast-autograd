@@ -13,3 +13,24 @@ Design Goals
     - So far, this goal seems possible only if layers are added sequentially
 
 NOTE: If you want to use clangd, ensure VS Build Tools (with C++ optional functionality) is installed
+
+## Installation of XTensor
+Installation links: [XTensor](https://github.com/xtensor-stack/xtensor); [XTensor BLAS](https://github.com/xtensor-stack/xtensor-blas); [XTL](https://github.com/xtensor-stack/xtl/tree/master). Requires C++20 or later.
+
+1. Go to each github repo, given by the links
+
+2. On each github repo, visit the "Tags" page. Ensure that the following required version tags exist:  
+XTensor: 0.27.0  
+XTensor BLAS: 0.23.0  
+XTL: 0.8.2
+
+3. Clone each repo, with the required version tags only, into the "lib" folder:
+```
+git clone --branch <VERSION TAG> <REPO LINK>
+```
+
+4. Check installation by compiling the main program:
+```
+cd ..
+make
+```

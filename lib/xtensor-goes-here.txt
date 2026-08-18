@@ -1,0 +1,4 @@
+Required directories:
+xtensor/
+xtensor-blas/
+xtl/
