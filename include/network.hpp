@@ -36,7 +36,12 @@ namespace cast {
 class Network {
 private:
 
-   /**
+    /**
+     * Network components that the network uses, in the order that they were added
+     */
+    std::vector<std::shared_ptr<NetworkComponent>> components_;
+
+    /**
      * True if the network is ready for training and evaluation
      */
     bool enabled_;
@@ -48,6 +53,17 @@ private:
     * Example: If the network created 2 branches, this field equals 3.
     */
     int32_t next_branch_id_;
+
+    /**
+    * Indices in `components_` that are leaf nodes, i.e. have no successors. Element `i` is the leaf node index for branch `i`.
+    *
+    * Leaf nodes are the only nodes that can be added to.
+    * The length of this vector is the total number of branches used in this network, whether active or combined with another branch.
+    *
+    * Element `i` equaling `NETWORK_BRANCH_COMBINED` indicates that branch `i` has been combined, and no longer exists.
+    * (This vector is never removed from.)
+    */
+    std::unordered_map<int32_t, int32_t> leaf_node_indices_;
     
     /**
      * Loss metric used by this network
@@ -61,25 +77,8 @@ private:
 
 
     /**
-    * Indices in `components_` that are leaf nodes, i.e. have no successors. Element `i` is the leaf node index for branch `i`.
-    *
-    * Leaf nodes are the only nodes that can be added to.
-    * The length of this vector is the total number of branches used in this network, whether active or combined with another branch.
-    *
-    * Element `i` equaling `NETWORK_BRANCH_COMBINED` indicates that branch `i` has been combined, and no longer exists.
-    * (This vector is never removed from.)
-    */
-    std::unordered_map<int32_t, int32_t> leaf_node_indices_;
-
-    /**
-     * Network components that the network uses, in the order that they were added
-     */
-    std::vector<std::shared_ptr<NetworkComponent>> components_;
-
-
-    /**
     * Stores all data required for a network component to execute.
-    * This data is placed in a queue during the forward or backward pass.
+    * Items of this type are created and placed in a queue during the forward or backward pass.
     *
     * Contains: component's branch ID, index in the `components_` list, and any inputs it has.
     */
@@ -100,6 +99,7 @@ private:
         */
         std::vector<xt::xarray<double>> component_input;
     };
+
 
  
     /**
@@ -197,6 +197,26 @@ public:
     Network() : enabled_(false), next_branch_id_(0) {      
     };
 
+
+    /**
+    * Copies `other_network` into a new network.
+    *
+    * All copied data is a deep copy, so modifying `other_network` does not affect the newly created network.
+    * @param other_network network to copy
+    */
+    Network(const Network& other_network) {
+        enabled_ = other_network.enabled_;
+        next_branch_id_ = other_network.next_branch_id_;
+        leaf_node_indices_ = other_network.leaf_node_indices_;
+        loss_calc_ = (other_network.loss_calc_) ? other_network.loss_calc_->shared_ptr_deep_copy() : nullptr;
+        optimizer_ = (other_network.optimizer_) ? other_network.optimizer_->shared_ptr_deep_copy() : nullptr;
+
+        components_ = {};
+        for(std::shared_ptr<NetworkComponent> component : other_network.components_) {
+            str_assert(component != nullptr, "INTERNAL ERROR- Each network component cannot be nullptr");
+            components_.push_back(component->shared_ptr_deep_copy());
+        }
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -333,12 +353,13 @@ public:
     * this method throws `cast::bad_component_addition`.
     *
     * To use this method, the network cannot be enabled.
-    * @param op operator to add to a branch
+    * @param op operator to add to a branch. Not equal to `nullptr`
     * @param branch_id branch to add the new operator to
     * @param loc location where this method is called (for debugging purposes)
     */
     void add_operator(std::shared_ptr<Operator> op, int32_t branch_id = 0, std::source_location loc = std::source_location::current()) {
         check_component_indices_({}, branch_id, loc);
+        str_assert(op != nullptr, "New operator to add cannot be nullptr", loc);
 
         //Make a deep copy of the operator
         std::shared_ptr<NetworkComponent> new_operator = op->shared_ptr_deep_copy();
@@ -412,6 +433,21 @@ public:
 
 
 
+    /**
+    * Sets the component with ID `component_id` to `component`.
+    * 
+    * A component's ID is the 0-based order in which the component was added to the network.
+    * ID 0 is the first component added, 1 is the second component added, and so on.
+    *
+    * The pointer to `component` cannot be used to modify the network's added component.
+    * @param component_id component number to set. At least 0, and less than the number of components added so far.
+    * @param component component to set
+    */
+    void set_component_at(int32_t component_id, std::shared_ptr<NetworkComponent> component) {
+        str_assert(0 <= component_id && component_id < (int32_t)components_.size(), "Component ID must be at least 0 and at most " + std::to_string(components_.size()) + ": got " + std::to_string(component_id));
+        components_[component_id].reset();
+        components_[component_id] = component->shared_ptr_deep_copy();
+    }
 
 
     /**
@@ -560,15 +596,20 @@ public:
      * @return result of forward pass
      */
     xt::xarray<double> forward(xt::xarray<double> input) {
+        //Thought this might help with thread safety
         if(!enabled_) {
             throw bad_network_config("Must enable the network prior to training");
         }
-
 
         std::queue<ComponentExecutionData> execution_queue;
         execution_queue.push({0, 0, {input}});
 
         while(!execution_queue.empty()) {
+            //Thought this might help with thread safety
+            if(!enabled_) {
+                throw bad_network_config("Must enable the network prior to training");
+            }
+
             ComponentExecutionData current = execution_queue.front();
             execution_queue.pop();
 
@@ -677,6 +718,11 @@ public:
         execution_queue.push({output_branch_id, output_components_idx, {output_loss}});
 
         while(!execution_queue.empty()) {
+            //Thought this might help with thread safety
+            if(!enabled_) {
+                throw bad_network_config("Must enable the network prior to computing backwards pass");
+            }
+
             ComponentExecutionData current = execution_queue.front();
             execution_queue.pop();
 
@@ -774,6 +820,32 @@ public:
     ///////////////////////////////////////////////////////////////////////////////////////////////
     //OPERATOR OVERLOADS
 
+    /**
+    * Deep-copies the data from `other_network` into this network.
+    * @param other_network network to copy
+    * @return deep copy of `other_network`
+    */
+    Network& operator=(const Network& other_network) {
+        //self assignment check
+        if(this == &other_network) {
+            return *this;
+        }
+
+        enabled_ = other_network.enabled_;
+        next_branch_id_ = other_network.next_branch_id_;
+        leaf_node_indices_ = other_network.leaf_node_indices_;
+        loss_calc_ = (other_network.loss_calc_) ? other_network.loss_calc_->shared_ptr_deep_copy() : nullptr;
+        optimizer_ = (other_network.optimizer_) ? other_network.optimizer_->shared_ptr_deep_copy() : nullptr;
+
+        components_ = {};
+        for(std::shared_ptr<NetworkComponent> component : other_network.components_) {
+            str_assert(component != nullptr, "INTERNAL ERROR- Each network component cannot be nullptr");
+            components_.push_back(component->shared_ptr_deep_copy());
+        }
+
+        return *this;
+    }
+
 
     /**
     * Exports `network` to the output stream `output_stream`, returning `output_stream` with `network`'s information inside.
@@ -783,7 +855,14 @@ public:
     */
     template<typename CharT, typename Traits>
     friend std::basic_ostream<CharT, Traits>& operator<<(std::basic_ostream<CharT, Traits>& output_stream, const Network& network);
+
+
+    /**
+    * Properly destroys a Network
+    */
+    ~Network() = default;
 };
+
 
 template<typename CharT, typename Traits>
 std::basic_ostream<CharT, Traits>& operator<<(std::basic_ostream<CharT, Traits>& output_stream, const Network& network) {

@@ -110,7 +110,7 @@ public:
 
 
     /**
-    * @return deep pointer copy of this Sigmoid object
+    * @return deep pointer copy of this loss calculator object
     */
     std::shared_ptr<LossCalculator> shared_ptr_deep_copy() const override {
         return std::make_shared<MeanSquaredError>(*this);
@@ -156,6 +156,80 @@ public:
 
         xt::xarray<double> grad_data = (predicted - expected) / predicted.size();
         return grad_data;
+    }
+};
+
+
+
+/**
+* Calculates cross-entropy loss
+*/
+class CrossEntropy : public LossCalculator {
+public:
+    /**
+    * Small constant added to prevent log(0)
+    */
+    static constexpr double epsilon = 1e-15;
+
+    /**
+    * Creates a new cross-entropy loss calculator
+    */
+    CrossEntropy() = default;
+
+
+    /**
+    * @return deep pointer copy of this loss calculator object
+    */
+    std::shared_ptr<LossCalculator> shared_ptr_deep_copy() const override {
+        return std::make_shared<CrossEntropy>(*this);
+    }
+
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////////////////////
+
+    /**
+     * @return the string "cross_entropy"
+     */
+    std::string to_string() const override {
+        return "cross_entropy";
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////////////////////
+
+    /**
+     * Returns the computed cross-entropy loss between `predicted` and `expected`.
+     * @param predicted model's predictions for a given input. Non-empty
+     * @param expected what the model should have predicted for a given input. Has the same shape as `predicted`
+     * @return cross entropy loss between `predicted` and `expected`
+     */
+    double compute(xt::xarray<double> predicted, xt::xarray<double> expected) const override {
+        assert_nonempty_same_shape_(predicted, expected);
+
+        auto clipped_pred = xt::clip(predicted, epsilon, 1.0 - epsilon);
+        // double batch_size = static_cast<double>(predicted.shape(0));
+    
+        // Mean categorical/binary cross-entropy loss over the batch
+        return -xt::sum(expected * xt::log(clipped_pred))();
+    }
+
+
+    
+    /**
+     * Returns the gradient of cross-entropy loss between `predicted` and `expected`.
+     * @param predicted model's predictions for a given input. Non-empty
+     * @param expected what the model should have predicted for a given input. Has the same number of elements as `predicted`
+     * @return gradient of cross entropy loss between `predicted` and `expected`
+     */
+    xt::xarray<double> compute_gradient(xt::xarray<double> predicted, xt::xarray<double> expected) const override {
+        assert_nonempty_same_shape_(predicted, expected);
+
+        auto clipped_pred = xt::clip(predicted, epsilon, 1.0 - epsilon);
+        // double batch_size = static_cast<double>(predicted.shape(0));
+        
+        // Derivative of -expected * log(predicted) divided by batch size
+        return (-expected / clipped_pred);
     }
 };
 

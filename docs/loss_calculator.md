@@ -105,6 +105,67 @@ Exports `calc` to the output stream `output_stream`, returning `output_stream` w
 ---
 
 
+## CrossEntropy
+
+Computes cross-entropy loss.
+
+Cross-entropy is equal to $\sum_{y} y_{predicted} * ln(y_{expected})$, where `y` is each element of the tensor-valued predicted and expected values. The minimum value of the expected output is `CrossEntropy::epsilon`, a value which prevents taking ln(0).
+
+Good for classification problems. Imposes more loss for being farther from the expected output.
+
+---
+
+### Methods
+
+#### compute
+
+*Signature:* `double compute(xt::xarray predicted, xt::xarray expected) const override`
+
+Returns the computed cross-entropy loss between `predicted` and `expected`.
+
+**Parameters**
+
+* `predicted` (`xt::xarray<double>`): Model's predictions for a given input. Non-empty.
+* `expected` (`xt::xarray<double>`): What the model should have predicted for a given input. Has the same shape as `predicted`.
+
+**Returns**
+
+* `double`: Cross entropy loss between `predicted` and `expected`.
+
+---
+
+#### compute_gradient
+
+*Signature:* `xt::xarray compute_gradient(xt::xarray predicted, xt::xarray expected) const override`
+
+Returns the gradient of cross-entropy loss between `predicted` and `expected`.
+
+**Parameters**
+
+* `predicted` (`xt::xarray<double>`): Model's predictions for a given input. Non-empty.
+* `expected` (`xt::xarray<double>`): What the model should have predicted for a given input. Has the same number of elements as `predicted`.
+
+**Returns**
+
+* `xt::xarray<double>`: Gradient of cross-entropy loss between `predicted` and `expected`.
+
+---
+
+#### to_string
+
+*Signature:* `std::string to_string() const override`
+
+Returns the string "cross_entropy".
+
+**Returns**
+
+* `std::string`: String representation of the loss calculator.
+
+
+---
+---
+---
+
 ## MeanSquaredError
 
 Computes Mean Squared Error (MSE) loss.

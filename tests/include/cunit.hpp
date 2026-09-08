@@ -2,6 +2,7 @@
 #define RSCODE_CUNIT_
 
 #include <cstdint>
+#include <exception>
 #include <iostream>
 #include <source_location>
 #include <stdexcept>
@@ -82,7 +83,7 @@ inline  void __assert_equals_msg(const T& expected, const T& result, std::string
 * @param loc location where this test was carried out (for debugging purposes)
 */
 template<typename T>
-inline  void __assert_almost_equals_msg_(const T& expected, const T& result, const T& tolerance, std::string failure_message = "Expected and result are not equal", std::source_location loc = std::source_location::current()) {
+inline void __assert_almost_equals_msg_(const T& expected, const T& result, const T& tolerance, std::string failure_message = "Expected and result are not equal", std::source_location loc = std::source_location::current()) {
     if(abs(expected - result) > tolerance) {
         std::cerr << "Expected: " << expected << "\n";
         std::cerr << "Result:   " << result << "\n";

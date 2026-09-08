@@ -2,6 +2,7 @@
 #include "../include/cast.hpp"
 
 #include <cstdint>
+#include <memory>
 #include <unordered_map>
 #include <xtensor/containers/xarray.hpp>
 
@@ -13,7 +14,8 @@ using namespace xt;
 
 
 /**
-* Trains on the XOR dataset, verifying the model's structure and checking that loss has decreased and that predictions are with 0.05 of their outputs.
+* Trains on the XOR dataset, verifying the model's structure and checking that loss has decreased and that predictions are with 0.05 of their expected outputs.
+* Also tests for deep-copy assignment.
 */
 void test_create_train_xor() {
     Network net = Network();
@@ -42,6 +44,11 @@ void test_create_train_xor() {
     //second linear1d: predecessors = sigmoid (branch 0), no successors
     assert_unordered_map_equals({{0, 1}}, net.component_at(2)->predecessors());
     assert_unordered_map_equals(unordered_map<int32_t, int32_t>(), net.component_at(2)->successors());
+
+    //Create 2 deep copies of the network
+    Network net2 = net;
+    Network net3;
+    net3 = net;
 
     vector<xarray<double>> inputs = {
         xarray<double>{0, 0},
@@ -94,6 +101,14 @@ void test_create_train_xor() {
         assert_true(prediction.shape() == expected_outputs[i].shape(), "Prediction and expected shapes not equal (expected outputs index " + std::to_string(i) + ")");
         //Prediction is within 0.05 of the expected output
         assert_array_almost_equals(expected_outputs[i], prediction, 0.05);
+
+        //Check that the other networks are not trained, and that the other networks' weights are the same
+        std::shared_ptr<Linear1d> l = dynamic_pointer_cast<Linear1d>(net.component_at(0));
+        std::shared_ptr<Linear1d> l2 = dynamic_pointer_cast<Linear1d>(net2.component_at(0));
+        std::shared_ptr<Linear1d> l3 = dynamic_pointer_cast<Linear1d>(net3.component_at(0));
+        assert_true(l->parameters()[0] != l2->parameters()[0], "First Linear1d weight matrix between copy-constructed and original network must differ");
+        assert_true(l->parameters()[0] != l3->parameters()[0], "First Linear1d weight matrix between assigned and original network must differ");
+        assert_equals(l2->parameters()[0], l3->parameters()[0]);
   }
 }
 
@@ -267,8 +282,10 @@ void test_train_branch() {
 
 
 
+
 int main() {
     test_create_train_xor();
     test_create_branch();
     test_train_branch();
+    cout << "Tests passed" << endl;
 }
