@@ -120,7 +120,7 @@ net.add_combiner({1, 2}, 0);
 ```
 Once merged, branch IDs are not reused. Even if more branches are created, branches 1 and 2 cannot be added to.
 
-See the [network branch creation section](docs/Home.md#network-branch-creation) for more details on branches.
+See the [network branch creation section](docs/Home.md#network-branch-management) for more details on branches.
 
 <br>
 

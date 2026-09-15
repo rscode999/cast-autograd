@@ -2,7 +2,7 @@
 
 Documentation for CAST's [classes](#classes).
 
-[How to manage branches](#network-branch-rules)
+[How to manage branches](#network-branch-management)
 
 ## Organization of Pages
 
@@ -51,7 +51,7 @@ All functionality is under the `cast` namespace.
 * [Output Stream Manipulators](ostream_manip.md)
 
 
-## Network Branch Creation
+## Network Branch Management
 
 A Network object starts empty. Network components (layers, branching structure, etc.) are added one at a time to the Network object.
 

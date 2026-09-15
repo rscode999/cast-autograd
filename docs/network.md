@@ -4,13 +4,13 @@
 
 Trainable predictor with user-defined structure.
 
-Components (activation functions, layers, branching structure...) are added one at a time.
+Components (activation functions, layers, branching structure...) are added one at a time. A network can have at most 2 billion components.
 
 After building the desired architecture, the network must be enabled through the `enable` method to train it.
-To be enabled, a network must have a loss calculator, optimizer, and at least one layer.
+To be enabled, a network must have a loss calculator, optimizer, and at least one layer. The network must have exactly one unterminated branch.  
 The `disable` method allows the network to be modified again.
 
-A network can have at most 2 billion components.
+When assigned to another network object, a network deep-copies its layers, so modifying the new network doesn't affect the original.
 
 ---
 ---
@@ -110,7 +110,7 @@ To use this method, the network cannot be enabled.
 
 * `branch_ids_to_combine` (`std::initializer_list<int32_t>`): List of branch IDs to merge. Non-empty.
 * `branch_id` (`int32_t`): Branch to add the new combiner to.
-* `loc` (`std::source_location`): Location where this method is called (for debugging purposes).
+* `loc` (`std::source_location`): For debugging only- callers should not modify this parameter.
 
 **Exceptions**
 
@@ -128,13 +128,15 @@ Adds `op` to the end of branch `branch_id`.
 
 An operator is a layer or an activation function.
 
+The operator pointer is deep copied, so the operator pointer cannot be used to modify the network's new operator.
+
 To use this method, the network cannot be enabled.
 
 **Parameters**
 
-* `op` (`std::shared_ptr<Operator>`): Operator to add to a branch.
+* `op` (`std::shared_ptr<Operator>`): Operator to add to a branch. Not equal to `nullptr`.
 * `branch_id` (`int32_t`): Branch to add the new operator to.
-* `loc` (`std::source_location`): Location where this method is called (for debugging purposes).
+* `loc` (`std::source_location`): For debugging only- callers should not modify this parameter.
 
 **Exceptions**
 
@@ -156,13 +158,13 @@ To use this method, the network cannot be enabled.
 
 * `branch_count` (`int32_t`): Number of branches to split execution into. Must be at least 2.
 * `branch_id` (`int32_t`): Branch to add the new splitter to.
-* `loc` (`std::source_location`): Location where this method is called (for debugging purposes).
+* `loc` (`std::source_location`): For debugging only- callers should not modify this parameter.
 
 **Exceptions**
 
 * `cast::bad_network_config`: If the network is enabled.
 * `cast::bad_component_addition`: If `branch_id` is negative, out of range, or corresponds to a merged branch.
-* `std::out_of_range`: If more than 2 billion components (operators, splitters, or combiners) have been added to the network.
+* `std::out_of_range`: If more than 2 billion components (operators, splitters, or combiners) have been added to the network, or the network has created more than 2 billion branches, including the ones that will be created.
 
 ---
 
@@ -184,7 +186,7 @@ Checks if the network has the necessary components to run.
 
 If not, throws `enable_failed_error`. If so, allows training and optimization.
 
-Enable check: The network must have a loss calculator, optimizer, at least one component, and exactly one output.
+Enable check: The network must have a loss calculator, optimizer, at least one component, and exactly one unterminated branch.
 
 **Exceptions**
 
@@ -208,6 +210,28 @@ To use this method, the network cannot be enabled.
 
 * `cast::bad_network_config`: If the network is enabled.
 
+---
+
+#### set_operator_at
+
+*Signature:* `void set_operator_at(int32_t component_id, std::shared_ptr<Operator> op)`
+
+Sets the operator with ID `component_id` to `op`.
+ 
+A component's ID is the 0-based order in which the component was added to the network.
+ID 0 is the first component added, 1 is the second component added, and so on.
+
+The pointer to `op` cannot be used to modify the network's newly altered component.
+
+Note: If the datatypes of `op` and the component with ID `component_id` are not the same,
+this method throws a `cast::bad_component_addition` exception.
+
+**Parameters**
+* `component_id` (`int32_t`): Component number to set. At least 0, and less than the number of components added so far.
+* `op` (`std::shared_ptr<Operator>`): Operator to set at the given number.
+
+**Exceptions**
+* `cast::bad_component_addition`: If the datatypes of `op` and the component with ID `component_id` differ.
 ---
 
 #### set_optimizer

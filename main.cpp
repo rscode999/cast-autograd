@@ -26,9 +26,7 @@ int main() {
     
     net.enable();
 
-    Network net2;
-    net = net2;
-    net.enable();
+    Network net2 = net;
 
     vector<xarray<double>> inputs = {
         xarray<double>{0, 0},

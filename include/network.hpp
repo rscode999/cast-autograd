@@ -47,10 +47,12 @@ private:
     bool enabled_;
 
     /**
-    * After the first component is added, this field is 1 greater than the largest branch ID 
+    * This field is 1 greater than the largest branch ID 
     * (even among branches that no longer exist) assigned to any component.
     *
-    * Example: If the network created 2 branches, this field equals 3.
+    * Example: If the network created 2 branches (even if one of the branches got merged), this field equals 3.
+    *
+    * Initialized to 0 in an empty network.
     */
     int32_t next_branch_id_;
 
@@ -113,7 +115,9 @@ private:
     * A Combiner must have each element of `combine_branch_ids` non-negative and less than the number of total branches used.
     * `branch_id` must not equal any element from `combine_branch_ids`.
     *
-    * `leaf_node_indices[branch_id or element from combine_branch_ids]` must not equal `NETWORK_BRANCH_COMBINED`. If so, a component will be added to a branch that no longer exists.
+    * All elements in `combine_branch_ids`, as well as `branch_id`, must correspond to branches that exist.
+    *
+    * The network must have, at most, 2 billion parameters added.
     *
     * @param combine_branch_ids branch IDs to be combined (in the case of a Combiner); if not a Combiner, this parameter is empty
     * @param branch_id branch ID that the component wil be added to
@@ -211,11 +215,13 @@ public:
         loss_calc_ = (other_network.loss_calc_) ? other_network.loss_calc_->shared_ptr_deep_copy() : nullptr;
         optimizer_ = (other_network.optimizer_) ? other_network.optimizer_->shared_ptr_deep_copy() : nullptr;
 
+        //deep copy the components
         components_ = {};
         for(std::shared_ptr<NetworkComponent> component : other_network.components_) {
             str_assert(component != nullptr, "INTERNAL ERROR- Each network component cannot be nullptr");
             components_.push_back(component->shared_ptr_deep_copy());
         }
+        components_.shrink_to_fit();
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -401,6 +407,11 @@ public:
     void add_splitter(int32_t branch_count, int32_t branch_id = 0, std::source_location loc = std::source_location::current()) {
         str_assert(branch_count >= 2, "Branch count must be at least 2; received " + std::to_string(branch_count), loc);
         check_component_indices_({}, branch_id, loc);
+        #ifndef NDEBUG
+        if((branch_count + next_branch_id_) < 0 || (branch_count + next_branch_id_) > 2000000000) {
+            throw std::out_of_range("Cannot add more than 2 billion branches to the network");
+        }
+        #endif
 
         std::shared_ptr<Splitter> splitter = std::make_shared<Splitter>(branch_count);
         //Register the component
@@ -434,19 +445,26 @@ public:
 
 
     /**
-    * Sets the component with ID `component_id` to `component`.
+    * Sets the operator with ID `component_id` to `op`.
     * 
     * A component's ID is the 0-based order in which the component was added to the network.
     * ID 0 is the first component added, 1 is the second component added, and so on.
     *
-    * The pointer to `component` cannot be used to modify the network's added component.
+    * If the types of the newly added operator and the operator being modified are different, throws `cast::bad_component_addition`.
+    *
+    * The pointer to `op` cannot be used to modify the network's newly altered operator.
     * @param component_id component number to set. At least 0, and less than the number of components added so far.
-    * @param component component to set
+    * @param op operator to set
     */
-    void set_component_at(int32_t component_id, std::shared_ptr<NetworkComponent> component) {
+    void set_operator_at(int32_t component_id, std::shared_ptr<Operator> op) {
         str_assert(0 <= component_id && component_id < (int32_t)components_.size(), "Component ID must be at least 0 and at most " + std::to_string(components_.size()) + ": got " + std::to_string(component_id));
+        
+        if(!(std::is_same_v<decltype(op), decltype(components_[component_id])>)) {
+            throw bad_component_addition("Operator to set must be of the same type as the operator with ID " + std::to_string(component_id));
+        }
+        
         components_[component_id].reset();
-        components_[component_id] = component->shared_ptr_deep_copy();
+        components_[component_id] = op->shared_ptr_deep_copy();
     }
 
 
@@ -575,6 +593,7 @@ public:
 
         //IMPORTANT: Initialization logic must come AFTER the checks. Otherwise, this method could be in a try/catch and allow training, even though the check failed.
         optimizer_->initialize(components_);
+        components_.shrink_to_fit();
         enabled_ = true;
     }
 
