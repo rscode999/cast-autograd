@@ -96,10 +96,12 @@ private:
         int32_t component_index;
 
         /**
-        * Input tensor(s) that the component receives when its turn to execute arrives.
+        * Input tensor that the component receives when its turn to execute arrives.
         * In the backwards pass, this field holds the component's upstream gradients.
+        *
+        * The tensor has its batches on index 0.
         */
-        std::vector<xt::xarray<double>> component_input;
+        xt::xarray<double> component_input;
     };
 
 
@@ -194,6 +196,36 @@ private:
 
 
 
+    inline xt::xarray<double> unwrap_xarray_(const xt::xarray<double>& input) {
+        if(batch_size() == 0) {
+            return xt::view(input, 0);
+        }
+        return input;
+    }
+
+    inline xt::xarray<double> wrap_xarray_(const xt::xarray<double>& input) {
+        xt::xarray<double> wrapped_input;
+        if (batch_size() == 0) {
+            // Build a new shape with an extra dimension at axis 0 (size 1)
+            auto old_shape = input.shape();
+            std::vector<std::size_t> new_shape;
+            new_shape.push_back(1); // Set axis 0 size to 1
+            new_shape.insert(new_shape.end(), old_shape.begin(), old_shape.end());
+
+            // Create the xarray with this new shape
+            wrapped_input = xt::xarray<double>(new_shape);
+
+            // Fill axis 0 with the input array data
+            xt::view(wrapped_input, 0) = input;
+        } 
+        else {
+            // Leave it as is
+            wrapped_input = input;
+        }
+
+        return wrapped_input;
+    }
+
 public:
     /**
      * Creates an empty network. The new network is disabled.
@@ -255,6 +287,13 @@ public:
         return leaf_node_indices_;
     }
 
+
+    int32_t batch_size() const {
+        if(!loss_calc_) {
+            throw bad_network_config("Must have a defined loss calculator to get the batch size");
+        }
+        return loss_calc_->batch_size();
+    }
 
 
     /**
@@ -445,6 +484,22 @@ public:
 
 
     /**
+    * Sets the network's batch size to new_batch_size.
+    * A batch size of 0 means that the network does not use batches.
+    *
+    * Requires that a loss calculator is defined.
+    * @param new_batch_size batch size to set. Non-negative.
+    */
+    void set_batch_size(int32_t new_batch_size) {
+        str_assert(new_batch_size >= 0, "New batch size must be non-negative- got " + std::to_string(new_batch_size));
+        if(!loss_calc_) {
+            throw bad_network_config("Loss calculator required to set batch size");
+        }
+        loss_calc_->set_batch_size(new_batch_size);
+    }
+
+
+    /**
     * Sets the operator with ID `component_id` to `op`.
     * 
     * A component's ID is the 0-based order in which the component was added to the network.
@@ -615,13 +670,17 @@ public:
      * @return result of forward pass
      */
     xt::xarray<double> forward(xt::xarray<double> input) {
-        //Thought this might help with thread safety
         if(!enabled_) {
             throw bad_network_config("Must enable the network prior to training");
         }
+        //Batch size, number of batches check
+        str_assert(batch_size() == 0 || input.shape() [0] == batch_size(), "If training with batch size, input's axis 0 must have " + std::to_string(batch_size()) + " elements (got " + std::to_string(input.shape()[0]) + ")");
 
         std::queue<ComponentExecutionData> execution_queue;
-        execution_queue.push({0, 0, {input}});
+
+        xt::xarray wrapped_input = wrap_xarray_(input);
+        // std::cout << wrapped_input << std::endl;
+        execution_queue.push({0, 0, wrapped_input});
 
         while(!execution_queue.empty()) {
             //Thought this might help with thread safety
@@ -641,7 +700,7 @@ public:
 
             // Handle splitters: Push all of its successors, including itself, into the execution queue
             if (std::shared_ptr<Splitter> splitter = std::dynamic_pointer_cast<Splitter>(current_component)) {
-                std::vector<std::vector<xt::xarray<double>>> branch_output = splitter->compute(current.component_input, true);
+                std::vector<xt::xarray<double>> branch_output = splitter->forward(current.component_input, true);
 
                 std::unordered_map<int32_t, int32_t> successors = splitter->successors();
                 str_assert(!successors.empty(), "Branch must have at least one successor");
@@ -652,22 +711,22 @@ public:
                 for(size_t out_idx = 0; succ_it != successors.end(); ++succ_it, ++out_idx) {
                     int32_t succ_branch_id = succ_it->first;
                     int32_t succ_component_idx = succ_it->second;
-                    std::vector<xt::xarray<double>> out_data = branch_output[out_idx < branch_output.size() ? out_idx : 0];
+                    xt::xarray<double> out_data = branch_output[out_idx < branch_output.size() ? out_idx : 0];
                     execution_queue.push({succ_branch_id, succ_component_idx, out_data});
                 }
             }
             // Handle combiners
             else if(std::shared_ptr<Combiner> combiner = std::dynamic_pointer_cast<Combiner>(current_component)) {
-                std::vector<xt::xarray<double>> combiner_output = combiner->forward(current.component_input);
+                xt::xarray<double> combiner_output = combiner->forward(current.component_input);
                 
                 // Combiner output is non-empty only when all required inputs have arrived (i.e. its output is non-empty)
-                if(!combiner_output.empty()) {
+                if(!(combiner_output.size() == 0)) {
                     // std::cout << "Combiner is ready" << std::endl;
                     
                     //The Combiner has no successors: Return
                     if(combiner->successors().empty()) {
                         // std::cout << "COMBINER HAS NO SUCCESSORS" << std::endl;
-                        return combiner_output[0];
+                        return unwrap_xarray_(combiner_output);
                     }
 
                     const std::unordered_map<int32_t, int32_t> succs = combiner->successors();
@@ -681,7 +740,7 @@ public:
             }
             // Handle single operator
             else {
-                std::vector<xt::xarray<double>> op_output;
+                xt::xarray<double> op_output;
 
                 //Compute the output. If incompatible shapes, re-throw the shape error
                 try {
@@ -693,7 +752,7 @@ public:
 
                 //No successors: Return (this is the single operator with no successors)
                 if(current_component->successors().empty()) {
-                    return op_output[0];
+                    return unwrap_xarray_(op_output);
                 }
 
                 const std::unordered_map<int32_t, int32_t> succs = current_component->successors();
@@ -716,6 +775,8 @@ public:
      *
      * Stores updated gradients inside the network layers, for use by the network's optimizer.
      *
+     * Throws `std::runtime_error` with the message "Dot shape mismatch" if given batched training data when not training with batches.
+     *
      * The network must be enabled to use this method.
      * @param predicted network's prediction for a given input
      * @param expected what the network should have predicted for the input
@@ -724,17 +785,15 @@ public:
         if(!enabled_) {
             throw bad_network_config("Must enable the network prior to computing backwards pass");
         }
-        if(!loss_calc_) {
-            throw bad_network_config("INTERNAL ERROR- No loss calculator defined");
-        }
 
-        xt::xarray<double> output_loss = loss_calc_->compute_gradient(predicted, expected);
+        xt::xarray<double> output_loss_gradient = loss_calc_->compute_gradient(predicted, expected);
+        str_assert(batch_size() == 0 || output_loss_gradient.shape() [0] == batch_size(), "If training with batch size, input's axis 0 must have " + std::to_string(batch_size()) + " elements (got " + std::to_string(output_loss_gradient.shape()[0]) + ")");
 
         std::queue<ComponentExecutionData> execution_queue;
         int32_t output_components_idx = (int32_t)components_.size() - 1;
         int32_t output_branch_id = components_[output_components_idx]->branch_id_;
         
-        execution_queue.push({output_branch_id, output_components_idx, {output_loss}});
+        execution_queue.push({output_branch_id, output_components_idx, wrap_xarray_(output_loss_gradient)});
 
         while(!execution_queue.empty()) {
             //Thought this might help with thread safety
@@ -752,10 +811,10 @@ public:
 
             // Handle splitters (act like combiners in the backwards pass, collecting inputs)
             if (std::shared_ptr<Splitter> splitter = std::dynamic_pointer_cast<Splitter>(current_component)) {
-                std::vector<xt::xarray<double>> branch_grads = splitter->backward(current.component_input);
+                xt::xarray<double> branch_grads = splitter->backward(current.component_input);
 
                 // Branch output is non-empty only when all required inputs have arrived
-                if (!branch_grads.empty()) {
+                if (!(branch_grads.size() == 0)) {
                     const std::unordered_map<int32_t, int32_t> preds = splitter->predecessors();
                     if (preds.empty()) {
                         return;
@@ -771,7 +830,7 @@ public:
             }
             // Handle combiners (act like splitters in the backwards pass, distributing gradients)
             else if (std::shared_ptr<Combiner> combiner = std::dynamic_pointer_cast<Combiner>(current_component)) {
-                std::vector<std::vector<xt::xarray<double>>> combiner_outputs = combiner->compute_backwards_pass(current.component_input, true);
+                std::vector<xt::xarray<double>> combiner_outputs = combiner->backward(current.component_input, true);
 
                 std::unordered_map<int32_t, int32_t> preds = combiner->predecessors();
                 str_assert(!preds.empty(), "Combiner must have at least one predecessor");
@@ -781,14 +840,14 @@ public:
                 for (size_t out_idx = 0; pred_it != preds.end(); ++pred_it, ++out_idx) {
                     int32_t pred_branch_id = pred_it->first;
                     int32_t pred_op_idx = pred_it->second;
-                    std::vector<xt::xarray<double>> out_data = combiner_outputs[out_idx < combiner_outputs.size() ? out_idx : 0];
+                    xt::xarray<double> out_data = combiner_outputs[out_idx < combiner_outputs.size() ? out_idx : 0];
 
                     execution_queue.push({pred_branch_id, pred_op_idx, out_data});
                 }
             }
             // Handle single operators
             else {
-                std::vector<xt::xarray<double>> op_output = current_component->backward(current.component_input);
+                xt::xarray<double> op_output = current_component->backward(current.component_input);
 
                 const std::unordered_map<int32_t, int32_t>& preds = current_component->predecessors();
                 //Stop early if there are no predecessors (it's the first component in the network)

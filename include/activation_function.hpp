@@ -32,7 +32,7 @@ private:
     *
     * Makes calculation of the backwards pass easier.
     */
-    std::vector<xt::xarray<double>> prev_outputs_;
+    xt::xarray<double> prev_outputs_;
 
 public:
 
@@ -64,19 +64,16 @@ public:
     //////////////////////////////////////////////////////////////////////////////////////////////////
     
     /**
-    * Returns the Sigmoid activation function applied to each parameter in `inputs`.
+    * Returns the Sigmoid activation function applied to each parameter in `input`.
     *
     * sigmoid(x) = 1 / (1 + exp(-x)) for a scalar value x.
-    * @param inputs list of values to compute. Non-empty
+    * @param input list of values to compute. Non-empty
     * @return sigmoid(x) for each element of `inputs`
     */
-    std::vector<xt::xarray<double>> forward(std::vector<xt::xarray<double>> inputs) override {
-        str_assert(inputs.size() > 0, "Input vector must be non-empty");
+    xt::xarray<double> forward(xt::xarray<double> input) override {
+        str_assert(input.size() > 0, "Input vector must be non-empty");
 
-        std::vector<xt::xarray<double>> output = {};
-        for(xt::xarray<double> params : inputs) {
-            output.push_back(1 / (1 + exp(-params)) );
-        }
+        xt::xarray<double> output = (1 / (1 + exp(-input)) );
 
         prev_outputs_ = output;
         return output;
@@ -90,21 +87,17 @@ public:
     * @param upstream_gradients list of values to compute. Non-empty
     * @return d(Sigmoid(x))/dx for each element x of `upstream_gradients`
     */
-    std::vector<xt::xarray<double>> backward(std::vector<xt::xarray<double>> upstream_gradients) override {
+    xt::xarray<double> backward(xt::xarray<double> upstream_gradients) override {
         str_assert(upstream_gradients.size() > 0, "Upstream gradients in Sigmoid backwards pass must be non-empty");
-        str_assert(prev_outputs_.size() == upstream_gradients.size(), "The forward-pass Sigmoid function must have been previously computed on an input of the same length as `upstream_gradients`");
+        str_assert(prev_outputs_.shape() == upstream_gradients.shape(), "The forward-pass Sigmoid function must have been previously computed on an input of the same length as `upstream_gradients`");
 
-        std::vector<xt::xarray<double>> output;
-        output.reserve(upstream_gradients.size());
+        xt::xarray<double> output;
 
         // sigmoid(x) * (1.0 - sigmoid(x));
-        for(int32_t i = 0; i < (int32_t)upstream_gradients.size(); i++) {
-            str_assert(prev_outputs_[i].shape() == upstream_gradients[i].shape(), "Upstream gradient element " + std::to_string(i) + " shape does not match the previous input's shape");
-            output.push_back(upstream_gradients[i] * prev_outputs_[i] * (1 - prev_outputs_[i]));
-        }
+        output = (upstream_gradients * prev_outputs_ * (1 - prev_outputs_));
 
         //Clear the previous outputs
-        prev_outputs_.clear();
+        prev_outputs_ = xt::xarray<double>{};
         
         return output;
     }
@@ -149,21 +142,15 @@ public:
 
 
     /**
-    * Returns the ReLU activation function applied to each parameter in `inputs`
+    * Returns the ReLU activation function applied to each parameter in `input`
     *
     * ReLU(x) = max(0, x) for a scalar x
-    * @param inputs list of values to compute. Non-empty
-    * @return ReLU(x) for each element of `inputs`
+    * @param input list of values to compute. Non-empty
+    * @return ReLU(x) for each element of `input`
     */
-    std::vector<xt::xarray<double>> forward(std::vector<xt::xarray<double>> inputs) override {
-        str_assert(inputs.size() > 0, "Input vector must be non-empty");
-
-        std::vector<xt::xarray<double>> output = {};
-        for(xt::xarray<double> params : inputs) {
-            output.push_back(xt::maximum(params, 0.0));
-        }
-
-        return output;
+    xt::xarray<double> forward(xt::xarray<double> input) override {
+        str_assert(input.size() > 0, "Input vector must be non-empty");
+        return xt::maximum(input, 0.0);
     }
 
 
@@ -174,16 +161,10 @@ public:
     * @param upstream_gradients list of values to compute. Non-empty
     * @return d(ReLU(x))/dx for each element x of `upstream_gradients`
     */
-    std::vector<xt::xarray<double>> backward(std::vector<xt::xarray<double>> upstream_gradients) override {
+    xt::xarray<double> backward(xt::xarray<double> upstream_gradients) override {
         str_assert(upstream_gradients.size() > 0, "Upstream gradients in ReLU backwards pass must be non-empty");
 
-        std::vector<xt::xarray<double>> output;
-        output.reserve(upstream_gradients.size());
-
-        for(xt::xarray<double> grad : upstream_gradients) {
-            output.push_back(xt::where(grad >= 0.0, 1.0, 0.0));
-        }
-        
+        xt::xarray<double> output = xt::where(upstream_gradients >= 0.0, 1.0, 0.0);
         return output;
     }
 };
@@ -198,7 +179,7 @@ private:
     /**
     * Outputs from the last time that this object computed values
     */
-    std::vector<xt::xarray<double>> prev_outputs_;
+    xt::xarray<double> prev_outputs_;
 
     /**
     * Dictates differences in outputs- higher values cause less distinct outputs
@@ -257,61 +238,61 @@ public:
 
 
     /**
-    * Returns the Softmax function applied to each element in `inputs`. Each element has the Softmax function applied to it.
-    * @param inputs list of values to compute. Non-empty
-    * @return Softmax(x) for each element of `inputs`
+    * Returns the Softmax function applied to each element in `input`. Each element has the Softmax function applied to it.
+    * Axis 0 of `input` divides batches, where each index of axis 0 is a single vector.
+    * @param input list of values to compute. Non-empty, and with more than 1 axis
+    * @return Softmax(x) for each element of `input`
     */
-    std::vector<xt::xarray<double>> forward(std::vector<xt::xarray<double>> inputs) override {
-        str_assert(inputs.size() > 0, "Inputs cannot be empty");
+    xt::xarray<double> forward(xt::xarray<double> input) override {
+        str_assert(input.size() > 0, "Input cannot be empty");
+        str_assert(input.shape().size() > 1, "Input must have multiple axes (axis 0 is for batch size only)");
+        throw not_implemented("Does not support batches");
 
-        prev_outputs_.clear();
-        prev_outputs_.reserve(inputs.size());
-        std::vector<xt::xarray<double>> outputs;
-        outputs.reserve(inputs.size());
+        // Store the last inputs of the calculation
+        prev_outputs_ = input;
 
-        for (const auto& x : inputs) {
-            str_assert(inputs.size() > 0, "Each input must be non-empty");
+        // Apply the temperature coefficient scaling
+        xt::xarray<double> scaled_input = input / temp_coeff_;
 
-            // Scale inputs by the temperature coefficient
-            auto scaled_inputs = x / temp_coeff_;
-            
-            // Numerically stable softmax by subtracting the maximum value
-            auto max_val = xt::amax(scaled_inputs);
-            auto exp_inputs = xt::exp(scaled_inputs - max_val);
-            auto softmax_out = exp_inputs / xt::sum(exp_inputs);
-            
-            outputs.push_back(softmax_out);
-            prev_outputs_.push_back(softmax_out); // Cache for backward pass
-        }
-        return outputs;
+        // Subtract the maximum along axis 1 (features) for numerical stability, 
+        // keeping dimensions intact for proper broadcasting across the batch axis (axis 0).
+        auto max_vals = xt::amax(scaled_input, {1}, xt::keep_dims);
+        auto shifted = scaled_input - max_vals;
+
+        // Compute the exponential of the shifted values
+        auto exp_vals = xt::exp(shifted);
+
+        // Compute the sum of exponentials along axis 1, keeping dimensions
+        auto sum_exp = xt::sum(exp_vals, {1}, xt::keep_dims);
+
+        // Divide exponentiated values by the sum to get the softmax probabilities
+        return exp_vals / sum_exp;
     }
 
 
     /**
     * Returns the derivative of Softmax applied to each parameter of `upstream_gradients`.
-    * @param upstream_gradients list of values to compute. Non-empty
+    * Axis 0 of `input` divides batches, where each index of axis 0 is a single vector.
+    * @param upstream_gradients list of values to compute. Non-empty, with more than 1 axis
     * @return d(Softmax(x))/dx for each element x of `upstream_gradients`
     */
-    std::vector<xt::xarray<double>> backward(std::vector<xt::xarray<double>> upstream_gradients) override {
+    xt::xarray<double> backward(xt::xarray<double> upstream_gradients) override {
         str_assert(upstream_gradients.size() > 0, "Upstream gradients cannot be empty");
+        str_assert(upstream_gradients.shape().size() > 1, "Input must have multiple axes (axis 0 is for batch size only)");
+        throw not_implemented("Does not support batches");
 
-        std::vector<xt::xarray<double>> input_gradients;
-        input_gradients.reserve(upstream_gradients.size());
+        // Recompute the forward softmax output (S) using prev_outputs_ and temp_coeff_
+        auto scaled = prev_outputs_ / temp_coeff_;
+        auto max_vals = xt::amax(scaled, {1}, xt::keep_dims);
+        auto exp_vals = xt::exp(scaled - max_vals);
+        auto S = exp_vals / xt::sum(exp_vals, {1}, xt::keep_dims);
 
-        for (size_t i = 0; i < upstream_gradients.size(); ++i) {
-            str_assert(upstream_gradients[i].size() > 0, "Each upstream gradient must be non-empty");
+        // Compute the dot product term: sum(upstream_gradients * S) along axis 1
+        auto sum_grad_s = xt::sum(upstream_gradients * S, {1}, xt::keep_dims);
 
-            const auto& g = upstream_gradients[i];
-            const auto& y = prev_outputs_[i];
-
-            // Softmax derivative with temperature scaling:
-            // dL/dx = (1 / T) * y * (g - sum(g * y))
-            auto sum_g_y = xt::sum(g * y);
-            auto grad = (y * (g - sum_g_y)) / temp_coeff_;
-            
-            input_gradients.push_back(grad);
-        }
-        return input_gradients;
+        // Apply the softmax Jacobian-vector product formula scaled by the temperature:
+        // dz = S * (upstream_gradients - sum_grad_s) / temp_coeff_
+        return S * (upstream_gradients - sum_grad_s) / temp_coeff_;
     }
 };
 

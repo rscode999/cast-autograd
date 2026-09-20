@@ -43,7 +43,7 @@ protected:
     /**
      * Tensors before this operation was applied
      */
-    std::vector<xt::xarray<double>> prev_inputs_;
+    xt::xarray<double> prev_inputs_;
 
 public:
 
@@ -61,7 +61,6 @@ public:
     std::vector<xt::xarray<double>>& parameters() {
         return parameters_;
     }
-
 };
 
 
@@ -146,16 +145,13 @@ public:
         str_assert(input_dimension > 0, "Input dimension (" + std::to_string(input_dimension) + ") must be positive");
         str_assert(output_dimension > 0, "Output dimension (" + std::to_string(output_dimension) + ") must be positive");
         
-        // PARAMETERS (weights, biases) - wrapped in Tensor
+        // PARAMETERS (weights, biases)
         parameters_.emplace_back(xt::random::randn<double>({output_dimension, input_dimension}, 0, 1));
         parameters_.emplace_back(xt::random::randn<double>({output_dimension}, 0, 1));
 
-        // GRADIENTS - wrapped in Tensor
+        // GRADIENTS
         gradients_.emplace_back(xt::zeros<double>({output_dimension, input_dimension}));
         gradients_.emplace_back(xt::zeros<double>({output_dimension}));
-
-        // PREV INPUT - wrapped in Tensor
-        prev_inputs_.emplace_back(xt::zeros<double>({input_dimension}));
     }
 
 
@@ -187,49 +183,34 @@ public:
      * Returns the result of the linear forward pass on `input`.
      *
      * If `input`'s single value is not a vector of this layer's input dimension, throws `cast::shape_error`.
-     * @param input list containing the layer input. Has exactly 1 element
+     * @param input list containing the layer input. Has multiple axes
      * @return forward pass result
      */
-    std::vector<xt::xarray<double>> forward(std::vector<xt::xarray<double>> input) override {
-        str_assert(input.size() == 1, "Linear1d forward pass computation takes 1 input; received " + std::to_string(input.size()) + " inputs");
-        assert_tensor_shape_(input[0].dimension() == 1, "Linear1d layers require vector (rank 1) inputs; input is of rank " + std::to_string(input[0].dimension()));
-        assert_tensor_shape_(input[0].shape()[0] == input_vector_dimension_, "This layer requires vectors of length " + std::to_string(input_vector_dimension_) + "; received length " + std::to_string(input[0].shape()[0]));
+    xt::xarray<double> forward(xt::xarray<double> input) override {
+        str_assert(input.shape().size() > 1, "Input must have multiple axes (axis 0 is for batches)");
         assert_parameter_list_preconditions_();
 
-        prev_inputs_[0] = input[0];
-
-        xt::xarray<double> output_tensor = xt::linalg::dot(parameters_[Weights], input[0]) + parameters_[Biases];
-        return {output_tensor};
+        prev_inputs_ = input;
+        return xt::linalg::dot(input, xt::transpose(parameters_[Weights])) + parameters_[Biases];
     }
 
 
 
     /**
      * Returns the gradients with respect to this layer and `upstream_gradients`, updating this layer's gradients.
-     * @param upstream_gradients gradients from this layer's successor. Contains a single 1d vector
+     * @param upstream_gradients gradients from this layer's successor
      * @return dY/dL, where Y is the overall derivative and L is this layer's data, contained in index 0 of the output
      */
-    std::vector<xt::xarray<double>> backward(std::vector<xt::xarray<double>> upstream_gradients) override {
-        str_assert(upstream_gradients.size() == 1, "Linear1d backwards operation must have one input; got " + std::to_string(upstream_gradients.size()));
-        str_assert(upstream_gradients[0].shape().size() == 1, "Linear1d backwards requires a vector (rank 1)");
-        str_assert(upstream_gradients[0].shape()[0] == output_vector_dimension_, "Linear1d backwards requires a vector of size " + std::to_string(output_vector_dimension_) + "; got size " + std::to_string(upstream_gradients[0].shape()[0]));
+    xt::xarray<double> backward(xt::xarray<double> upstream_gradients) override {
+        // std::cout << upstream_gradients << std::endl;
+        str_assert(upstream_gradients.shape().size() > 1, "Input must have multiple axes (axis 0 is for batches)");
         assert_parameter_list_preconditions_();
 
-        xt::xarray<double> d_output = upstream_gradients[0];
+        auto d_input = xt::linalg::dot(upstream_gradients, parameters_[Weights]); 
+        gradients_[Weights] = xt::linalg::dot(xt::transpose(upstream_gradients), prev_inputs_); 
+        gradients_[Biases] = xt::sum(upstream_gradients, {0}); 
 
-        // dW incremented by: d_output * transpose of prev. input
-        gradients_[Weights] += xt::view(d_output, xt::all(), xt::newaxis()) * xt::view(prev_inputs_[0], xt::newaxis(), xt::all());
-
-        // dB incremented by d_output
-        gradients_[Biases] += d_output;
-
-        // d_Input = transpose of weights * d_output, to next layer
-        xt::xarray<double> d_input = xt::linalg::dot(xt::transpose(parameters_[Weights]), d_output);
-
-        // std::cout << "gradients " << d_input << std::endl;
-
-        // Return the gradient vector for the previous layer
-        return {d_input};
+        return d_input;
     }
 
 };

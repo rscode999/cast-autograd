@@ -153,21 +153,17 @@ public:
 
     /**
      * Returns the results of this operation on `inputs`.
-     *
-     * The component can have one or more inputs, and one or more outputs
-     * @param inputs tensors to compute this operation on
-     * @return results of this operator on `inputs`
+     * @param input tensors to compute this operation on
+     * @return result of this operator on `inputs`
      */
-    virtual std::vector<xt::xarray<double>> forward(std::vector<xt::xarray<double>> inputs) = 0;
+    virtual xt::xarray<double> forward(xt::xarray<double> input) = 0;
 
     /**
      * Returns the backwards pass of this component on `upstream_gradients`.
-     *
-     * The component can have one or more inputs, and one or more outputs
      * @param upstream_gradients gradients from the previous operator
      * @return results of the operator's backwards pass on `upstream_gradients`
      */
-    virtual std::vector<xt::xarray<double>> backward(std::vector<xt::xarray<double>> upstream_gradients) = 0;
+    virtual xt::xarray<double> backward(xt::xarray<double> upstream_gradients) = 0;
 
 
     //////////////////////////////////////////////////////////////////

@@ -4,6 +4,7 @@
 #include "cast_exceptions.hpp"
 
 #include <xtensor/containers/xarray.hpp>
+#include <xtensor/views/xview.hpp>
 
 #include <string>
 
@@ -15,9 +16,16 @@ namespace cast {
 
 /**
  * Computes loss, the error between the expected and predicted network outputs
+ *
+ * Has a reconfigurable batch size. Batch size default is 0, meaning that the network does not use batches.
  */
 class LossCalculator {
 protected:
+    /**
+    * Number of examples per batch. 0 if the calculator accepts single inputs.
+    */
+    int32_t batch_size_ = 0;
+
     /**
     * Asserts that `predicted` and `expected` are non-empty and of the same shape.
     *
@@ -27,7 +35,7 @@ protected:
     */
     void assert_nonempty_same_shape_(xt::xarray<double> predicted, xt::xarray<double> expected) const {
         #ifndef NDEBUG
-
+        
         str_assert(predicted.size() > 0, "Predicted value must be non-empty");
 
         xt::svector<std::size_t> predicted_shape = predicted.shape();
@@ -49,11 +57,29 @@ public:
     */
     virtual std::shared_ptr<LossCalculator> shared_ptr_deep_copy() const = 0;
 
+
+    /**
+    * @return the calculator's batch size. Equals 0 if the calculator does not use batches.
+    */
+    int32_t batch_size() const {
+        return batch_size_;
+    }
+
     /**
      * @return the calculator's identifying string. Defaults to "loss_calculator" if not overridden by an implementing class.
      */
     virtual std::string to_string() const {
         return "loss_calculator";
+    }
+
+    /**
+    * Sets the calculator's batch size to `new_batch_size`.
+    * A batch size of 0 means that the calculator does not use batches.
+    * @param new_batch_size batch size to set. Non-negative.
+    */
+    void set_batch_size(int32_t new_batch_size) {
+        str_assert(new_batch_size >= 0, "New batch size must be non-negative- got " + std::to_string(new_batch_size));
+        batch_size_ = new_batch_size;
     }
 
     /**
@@ -140,7 +166,15 @@ public:
         assert_nonempty_same_shape_(predicted, expected);
 
         double sum_sq = xt::sum(xt::square(predicted - expected))();
-        return sum_sq / (2.0 * static_cast<double>(predicted.size()));
+        double single_loss = sum_sq / (2.0 * static_cast<double>(predicted.size()));
+
+        // Return total MSE loss across the batch if batch_size_ is nonzero
+        if (batch_size_ != 0) {
+            return single_loss * static_cast<double>(batch_size_);
+        }
+
+        // Otherwise, return the single loss value
+        return single_loss;
     }
 
 
@@ -154,8 +188,15 @@ public:
     xt::xarray<double> compute_gradient(xt::xarray<double> predicted, xt::xarray<double> expected) const override {
         assert_nonempty_same_shape_(predicted, expected);
 
-        xt::xarray<double> grad_data = (predicted - expected) / predicted.size();
-        return grad_data;
+        xt::xarray<double> single_grad = (predicted - expected) / static_cast<double>(predicted.size());
+
+        // Return total MSE gradient across the batch if batch_size_ is nonzero
+        if (batch_size_ != 0) {
+            return single_grad * static_cast<double>(batch_size_);
+        }
+
+        // Otherwise, return the single gradient value
+        return single_grad;
     }
 };
 
