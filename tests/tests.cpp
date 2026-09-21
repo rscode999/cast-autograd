@@ -1,5 +1,6 @@
 #include "include/cunit.hpp"
 #include "../include/cast.hpp"
+#include "xtensor/containers/xstorage.hpp"
 
 #include <cassert>
 #include <cstdint>
@@ -48,6 +49,92 @@ void test_linear1d_forward_1to1() {
     forward_output(1,0) = 5;
     forward_output(2,0) = -21;
     assert_array_equals(forward_output, l2.forward(forward_input));
+}
+
+
+
+/**
+* Tests Mean Squared Error and Cross Entropy loss, with and without batches
+*/
+void test_mse_crossentropy() {
+    shared_ptr<MeanSquaredError> mse = make_shared<MeanSquaredError>();
+    shared_ptr<CrossEntropy> ce = make_shared<CrossEntropy>();
+
+    //Multi-input, no batches
+    xarray<double> predicted = {0.1, 0.2, 0.3, 0.4};
+    xarray<double> expected = {0.4, 0.3, 0.2, 0.1};
+    assert_almost_equals(0.025, mse->compute(predicted, expected), 1e-4);
+    assert_almost_equals(1.7363, ce->compute(predicted, expected), 1e-4);
+
+    assert_array_almost_equals({-0.075, -0.025, 0.025, 0.075}, mse->compute_gradient(predicted, expected), 1e-4);
+    assert_array_almost_equals({-4.0, -1.5, -0.6667, -0.25}, ce->compute_gradient(predicted, expected), 1e-4);
+    assert_true(mse->compute_gradient(predicted, expected).shape() == xt::svector<size_t>{4}, "MSE gradient should have shape (4,)");
+    assert_true(ce->compute_gradient(predicted, expected).shape() == xt::svector<size_t>{4}, "Cross entropy gradient should have shape (4,)");
+
+
+    //Single input, no batches
+    predicted = {0.4};
+    expected = {1.0};
+    assert_almost_equals(0.18, mse->compute(predicted, expected), 1e-3);
+    assert_almost_equals(0.9163, ce->compute(predicted, expected), 1e-3);
+
+    assert_array_almost_equals({-0.6}, mse->compute_gradient(predicted, expected), 1e-4);
+    assert_array_almost_equals({-2.5}, ce->compute_gradient(predicted, expected), 1e-4);
+    assert_true(mse->compute_gradient(predicted, expected).shape() == xt::svector<size_t> {1}, "MSE loss gradient should have shape (1,)");
+    assert_true(ce->compute_gradient(predicted, expected).shape() == xt::svector<size_t> {1}, "Cross entropy loss gradient should have shape (1,)");
+
+
+    //Multi-input with multiple dimensions, no batches
+    predicted = {{0.1, 0.1, 0.2}, {0.2, 0.1, 0.3}};
+    expected = {{0.1, 0.1, 0.2}, {0.2, 0.3, 0.1}};
+    assert_almost_equals(0.006667, mse->compute(predicted, expected), 1e-4);
+    assert_almost_equals(1.9155, ce->compute(predicted, expected), 1e-4);
+
+    assert_array_almost_equals({{0.0, 0.0, 0.0}, {0.0, -0.0333, 0.0333}}, mse->compute_gradient(predicted, expected), 1e-4);
+    assert_array_almost_equals({{-1.0, -1.0, -1.0}, {-1.0, -3.0, -0.3333}}, ce->compute_gradient(predicted, expected), 1e-4);
+    assert_true(mse->compute_gradient(predicted, expected).shape() == xt::svector<size_t>{2, 3}, "MSE loss gradient should have shape (2,3)");
+    assert_true(ce->compute_gradient(predicted, expected).shape() == xt::svector<size_t>{2, 3}, "Cross entropy loss gradient should have shape (2,3)");
+
+
+    //Multi-input over batches
+    mse->set_batch_size(2);
+    ce->set_batch_size(2);
+    predicted = {{0.1, 0.1, 0.8}, {0.2, 0.1, 0.7}};
+    expected = {{0.5, 0.1, 0.4}, {0.2, 0.3, 0.5}};
+    assert_almost_equals(0.06667, mse->compute(predicted, expected), 1e-4);
+    assert_almost_equals(1.3309, ce->compute(predicted, expected), 1e-4);
+
+    assert_array_almost_equals({{-0.1333, 0.0, 0.13333}, {0.0, -0.0667, 0.0667}}, mse->compute_gradient(predicted, expected), 1e-4);
+    assert_array_almost_equals({{-2.5, -0.5, -0.25}, {-0.5, -1.5, -0.3571}}, ce->compute_gradient(predicted, expected), 1e-4);
+    assert_true(mse->compute_gradient(predicted, expected).shape() == xt::svector<size_t>{2, 3}, "MSE loss gradient should have shape (2,3)");
+    assert_true(ce->compute_gradient(predicted, expected).shape() == xt::svector<size_t>{2, 3}, "Cross entropy loss gradient should have shape (2,3)");
+
+
+    //multiple inputs in a batch
+    predicted = {{{0.1, 0.2}, {0.3, 0.4}}, {{0.1, 0.2}, {0.3, 0.4}}};
+    expected = {{{0.1, 0.2}, {0.3, 0.4}}, {{0.1, 0.2}, {0.3, 0.4}}};
+    assert_almost_equals(0., mse->compute(predicted, expected), 1e-4);
+    assert_almost_equals(1.27985, ce->compute(predicted, expected), 1e-4);
+
+    assert_array_almost_equals(xt::zeros_like(predicted), mse->compute_gradient(predicted, expected), 1e-4);
+    assert_array_almost_equals(xt::xarray<double>({2,2,2}, -0.5), ce->compute_gradient(predicted, expected), 1e-4);
+    assert_true(mse->compute_gradient(predicted, expected).shape() == xt::svector<size_t>{2, 2, 2}, "MSE loss gradient should have shape (2,2,2)");
+    assert_true(ce->compute_gradient(predicted, expected).shape() == xt::svector<size_t>{2, 2, 2}, "Cross entropy loss gradient should have shape (2,2,2)");
+
+
+    //Batch size 1
+    mse->set_batch_size(1);
+    ce->set_batch_size(1);
+    predicted = {{0.3, 0.4, 0.4}};
+    expected = {{0.1, 0.1, 0.8}};
+    assert_almost_equals(0.04835, mse->compute(predicted, expected), 1e-4);
+    assert_almost_equals(0.9451, ce->compute(predicted, expected), 1e-4);
+
+    assert_array_almost_equals({{0.06667, 0.1, -0.13333}}, mse->compute_gradient(predicted, expected), 1e-4);
+    assert_array_almost_equals({{-0.3333, -0.25, -2.0}}, ce->compute_gradient(predicted, expected), 1e-4);
+    assert_true(mse->compute_gradient(predicted, expected).shape() == xt::svector<size_t>{1, 3}, "MSE loss gradient should have shape (1,3)");
+    assert_true(ce->compute_gradient(predicted, expected).shape() == xt::svector<size_t>{1, 3}, "Cross entropy loss gradient should have shape (1,3)");
+
 }
 
 
@@ -507,6 +594,7 @@ void test_train_branch() {
 int main() {
     test_linear1d_forward();
     test_linear1d_forward_1to1();
+    test_mse_crossentropy();
     test_train_no_batch();
     test_train_batch_1();
     test_train_batch_2();

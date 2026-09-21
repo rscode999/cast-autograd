@@ -246,7 +246,6 @@ public:
     xt::xarray<double> forward(xt::xarray<double> input) override {
         str_assert(input.size() > 0, "Input cannot be empty");
         str_assert(input.shape().size() > 1, "Input must have multiple axes (axis 0 is for batch size only)");
-        throw not_implemented("Does not support batches");
 
         // Store the last inputs of the calculation
         prev_outputs_ = input;
@@ -279,7 +278,6 @@ public:
     xt::xarray<double> backward(xt::xarray<double> upstream_gradients) override {
         str_assert(upstream_gradients.size() > 0, "Upstream gradients cannot be empty");
         str_assert(upstream_gradients.shape().size() > 1, "Input must have multiple axes (axis 0 is for batch size only)");
-        throw not_implemented("Does not support batches");
 
         // Recompute the forward softmax output (S) using prev_outputs_ and temp_coeff_
         auto scaled = prev_outputs_ / temp_coeff_;

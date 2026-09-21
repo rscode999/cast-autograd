@@ -249,10 +249,10 @@ public:
         assert_nonempty_same_shape_(predicted, expected);
 
         auto clipped_pred = xt::clip(predicted, epsilon, 1.0 - epsilon);
-        // double batch_size = static_cast<double>(predicted.shape(0));
+        double divisor = (batch_size_ == 0) ? 1.0 : static_cast<double>(batch_size_);
     
         // Mean categorical/binary cross-entropy loss over the batch
-        return -xt::sum(expected * xt::log(clipped_pred))();
+        return -xt::sum(expected * xt::log(clipped_pred))() / divisor;
     }
 
 
@@ -267,10 +267,10 @@ public:
         assert_nonempty_same_shape_(predicted, expected);
 
         auto clipped_pred = xt::clip(predicted, epsilon, 1.0 - epsilon);
-        // double batch_size = static_cast<double>(predicted.shape(0));
+        double divisor = (batch_size_ == 0) ? 1.0 : static_cast<double>(batch_size_);
         
-        // Derivative of -expected * log(predicted) divided by batch size
-        return (-expected / clipped_pred);
+        // Derivative of -expected * log(predicted) divided by batch size (or 1 if batch_size_ is 0)
+        return (-expected / clipped_pred) / divisor;
     }
 };
 

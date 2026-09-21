@@ -678,7 +678,7 @@ public:
 
         std::queue<ComponentExecutionData> execution_queue;
 
-        xt::xarray wrapped_input = wrap_xarray_(input);
+        xt::xarray<double> wrapped_input = wrap_xarray_(input);
         // std::cout << wrapped_input << std::endl;
         execution_queue.push({0, 0, wrapped_input});
 
