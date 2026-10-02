@@ -64,6 +64,7 @@ public:
     int32_t batch_size() const {
         return batch_size_;
     }
+    
 
     /**
      * @return the calculator's identifying string. Defaults to "loss_calculator" if not overridden by an implementing class.

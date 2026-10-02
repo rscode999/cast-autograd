@@ -196,18 +196,29 @@ private:
 
 
 
-    inline xt::xarray<double> unwrap_xarray_(const xt::xarray<double>& input) {
+    /**
+    * If `batch_size()` is zero, returns the first element in axis 0 of `wrapped_arr`. Otherwise, returns `wrapped_arr` as itself.
+    * @param wrapped_arr array to unwrap
+    * @return `wrapped_arr` as a single array, if not doing batch training
+    */
+    inline xt::xarray<double> unwrap_xarray_(const xt::xarray<double>& wrapped_arr) {
         if(batch_size() == 0) {
-            return xt::view(input, 0);
+            return xt::view(wrapped_arr, 0);
         }
-        return input;
+        return wrapped_arr;
     }
 
-    inline xt::xarray<double> wrap_xarray_(const xt::xarray<double>& input) {
+
+    /**
+    * If `batch_size()` is zero, puts `unwrapped_arr` into axis 0 of a surrounding array. Otherwise, returns `unwrapped_arr` as itself.
+    * @param unwrapped_arr array to wrap
+    * @return `unwrapped_arr` prepared for batch training
+    */
+    inline xt::xarray<double> wrap_xarray_(const xt::xarray<double>& unwrapped_arr) {
         xt::xarray<double> wrapped_input;
         if (batch_size() == 0) {
             // Build a new shape with an extra dimension at axis 0 (size 1)
-            auto old_shape = input.shape();
+            auto old_shape = unwrapped_arr.shape();
             std::vector<std::size_t> new_shape;
             new_shape.push_back(1); // Set axis 0 size to 1
             new_shape.insert(new_shape.end(), old_shape.begin(), old_shape.end());
@@ -216,11 +227,11 @@ private:
             wrapped_input = xt::xarray<double>(new_shape);
 
             // Fill axis 0 with the input array data
-            xt::view(wrapped_input, 0) = input;
+            xt::view(wrapped_input, 0) = unwrapped_arr;
         } 
         else {
             // Leave it as is
-            wrapped_input = input;
+            wrapped_input = unwrapped_arr;
         }
 
         return wrapped_input;
@@ -288,6 +299,13 @@ public:
     }
 
 
+
+    /**
+    * Returns the batch size currently used by this network. Returns 0 if the network does not train in batches.
+    *
+    * Throws `cast::bad_network_config` if no loss calculator is set.
+    * @return current batch size
+    */
     int32_t batch_size() const {
         if(!loss_calc_) {
             throw bad_network_config("Must have a defined loss calculator to get the batch size");
@@ -296,13 +314,14 @@ public:
     }
 
 
+
     /**
     * Returns a pointer to the component with ID `component_id`.
     * 
     * A component's ID is the 0-based order in which the component was added to the network.
     * ID 0 is the first component added, 1 is the second component added, and so on.
     *
-    * The returned pointer cannot be used to modify the network's component.
+    * The returned pointer is a deep copy. It cannot be used to modify the network's component.
     * @param component_id component number to access. At least 0, and less than the number of components added so far.
     * @return `i`-th component in the network
     */
@@ -484,10 +503,10 @@ public:
 
 
     /**
-    * Sets the network's batch size to new_batch_size.
+    * Sets the network's batch size to `new_batch_size`.
     * A batch size of 0 means that the network does not use batches.
     *
-    * Requires that a loss calculator is defined.
+    * Requires that a loss calculator is set. If not, throws `cast::bad_network_config`.
     * @param new_batch_size batch size to set. Non-negative.
     */
     void set_batch_size(int32_t new_batch_size) {
@@ -662,6 +681,9 @@ public:
 
     /**
      * Returns the result of the network's forward pass on `input`.
+     *
+     * If the network trains in batches, i.e. `batch_size()` is positive, axis 0 of `input` is the batch index.
+     * All elements on axis 0 must be valid inputs to the network.
      *
      * Throws `cast::shape_error` if layer dimensions are incompatible.
      *

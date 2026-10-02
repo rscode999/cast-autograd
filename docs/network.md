@@ -59,6 +59,20 @@ The first component added has an ID of 0. The second has an ID of 1, and so on.
 
 ---
 
+#### batch_size
+
+*Signature:* `int32_t batch_size() const`
+
+Returns the batch size currently used by this network. Returns 0 if the network does not train in batches.
+
+**Returns**
+* `int32_t`: Network's batch size.
+
+**Exceptions**
+* `cast::bad_network_config`: If the network's loss calculator is not set.
+
+---
+
 #### component_at
 
 *Signature:* `std::shared_ptr<NetworkComponent> component_at(int32_t component_id) const`
@@ -194,6 +208,20 @@ Enable check: The network must have a loss calculator, optimizer, at least one c
 
 ---
 
+#### set_batch_size
+
+*Signature:* `void set_batch_size(int32_t new_batch_size)`
+
+Sets the network's batch size to `new_batch_size`. If `new_batch_size` is 0, the network does not train in batches.
+
+**Parameters**
+* `new_batch_size` (`int32_t`): Batch size. Non-negative.
+
+**Exceptions**
+* `cast::bad_network_config`: If the network's loss calculator is not set.
+
+---
+
 #### set_loss_calculator
 
 *Signature:* `void set_loss_calculator(std::shared_ptr<LossCalculator> calc)`
@@ -281,6 +309,9 @@ in the optimizer's `set_hyperparameters` method.
 
 Returns the result of the network's forward pass on `input`.
 
+If the network trains in batches, i.e. `batch_size()` is positive, axis 0 of `input` is treated as the batch index.
+Example: If `batch_size()` is 2, axis 0 must have 2 elements, each of which are valid inputs to the network.
+
 To use this method, the network must be enabled.
 
 **Parameters**
@@ -295,7 +326,6 @@ To use this method, the network must be enabled.
 
 * `cast::bad_network_config`: If the network is not enabled.
 * `cast::shape_error`: If input shapes are incompatible between successive network components.
-* `std::runtime_error`: If the forward pass finishes without reaching an output node.
 
 ---
 
@@ -305,6 +335,8 @@ To use this method, the network must be enabled.
 
 Computes the backward pass, beginning with loss between `predicted` and `expected`.
 
+If `batch_size()` is nonzero, axis 0 of each input must contain `batch_size()` elements, where each element is a valid input to the network.
+
 Stores updated gradients inside the network layers, for use by the network's optimizer.
 
 The network must be enabled to use this method.
@@ -312,11 +344,12 @@ The network must be enabled to use this method.
 **Parameters**
 
 * `predicted` (`xt::xarray<double>`): Network's prediction for a given input.
-* `expected` (`xt::xarray<double>`): What the network should have predicted instead of `predicted`.
+* `expected` (`xt::xarray<double>`): What the network should have predicted instead of `predicted`. Has the same shape as `predicted`.
 
 **Exceptions**
 
-* `bad_network_config`: If the network is not enabled.
+* `cast::bad_network_config`: If the network is not enabled.
+* `std::runtime_error`: If given batched training data when `batch_size()` is 0. Error message is "Dot shape mismatch".
 
 ---
 
@@ -344,9 +377,15 @@ To use this method, the network must be enabled.
 
 #### output stream insertion (<<)
 
-*Signature:* `template<typename CharT, typename Traits> friend std::basic_ostream<CharT, Traits>& operator<<(std::basic_ostream<CharT, Traits>& output_stream, const Network& network)`
+*Signature:*
+``` 
+template<typename CharT, typename Traits>
+friend std::basic_ostream<CharT, Traits>& operator<<(std::basic_ostream<CharT, Traits>& output_stream, const Network& network)
+```
 
 Exports `network` to the output stream `output_stream`, returning `output_stream` with `network`'s information inside.
+
+Information includes: enabled/disabled status, loss calculator, optimizer, and each layer. Each network part is on a new line.
 
 Works for any output stream, including `std::wcout`, the wide-character output.
 

@@ -65,6 +65,19 @@ Returns a deep pointer copy of this loss calculator. The deep copy cannot be use
 
 ---
 
+#### batch_size
+
+*Signature:* `int32_t batch_size() const`
+
+Returns the calculator's batch size, or 0 if the calculator does not use batches.
+
+If using a nonzero batch size, loss is averaged over axis 0 of the calculator's inputs.
+
+**Returns**
+* `int32_t`: Batch size.
+
+---
+
 #### to_string
 
 *Signature:* `std::string to_string() const`
@@ -75,6 +88,21 @@ Defaults to "loss_calculator" if not overridden by an implementing class.
 
 **Returns**
 * `std::string`: Identifier of the loss calculator.
+
+---
+
+### Setters
+
+#### set_batch_size
+
+*Signature:* `void set_batch_size(int32_t new_batch_size)`
+
+Sets the calculator's loss to `new_batch_size`.
+
+Setting the batch size to 0 makes the calculator not use batches.
+
+**Parameters**
+* `new_batch_size` (`int32_t`): Batch size to set. Non-negative.
 
 ---
 

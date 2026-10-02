@@ -592,6 +592,7 @@ void test_train_branch() {
 
 
 int main() {
+    do documentation for get/set batch size, raw xarray operator i/o!
     test_linear1d_forward();
     test_linear1d_forward_1to1();
     test_mse_crossentropy();

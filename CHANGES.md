@@ -3,7 +3,8 @@
 ## 0.11.0
 *In Progress*
 
-Will include batch training.
+- Implemented batch training
+    - Network and LossCalculator modified to support batching. Batch size 0 (the default) indicates no training
 
 ## 0.10.1
 *15 September 2026*
