@@ -588,20 +588,130 @@ void test_train_branch() {
 
 
 
+/**
+* Trains on the binary to one-hot dataset, with `n_inputs` inputs.
+*/
+void test_train_bin_to_onehot(const int32_t& N_INPUTS) {
+
+    const int N_OUTPUTS = pow(2, N_INPUTS);
+
+    //Make the dataset
+    vector<xarray<double>> inputs;
+    vector<xarray<double>> expected_outputs;
+
+    for (int i = 0; i < N_OUTPUTS; i++) {
+        xarray<double> input = xt::zeros<double>({N_INPUTS});
+        xarray<double> output = xt::zeros<double>({N_OUTPUTS});
+
+        //Inputs to binary value
+        for (int j = 0; j < N_INPUTS; j++) {
+            input(j) = (i >> j) & 1;
+        }
+
+        //Output[i] to 1
+        output(i) = 1.0;
+
+        inputs.emplace_back(input);
+        expected_outputs.emplace_back(output);
+    }
+
+
+    //Make the batch training dataset, with 1/2 of the inputs and expected outputs per index
+    vector<xt::xarray<double>> input_batches(2);
+    vector<xt::xarray<double>> output_batches(2);
+    const size_t half = N_OUTPUTS / 2;
+
+    for (int batch = 0; batch < 2; ++batch) {
+        input_batches[batch] = xt::zeros<double>({half, static_cast<size_t>(N_INPUTS)});
+
+        output_batches[batch] = xt::zeros<double>({half, static_cast<size_t>(N_OUTPUTS)});
+
+        for (size_t i = 0; i < half; ++i) {
+            for (size_t j = 0; j < N_INPUTS; ++j) {
+                input_batches[batch](i, j) =
+                    inputs[batch * half + i](j);
+            }
+
+            for (size_t j = 0; j < N_OUTPUTS; ++j) {
+                output_batches[batch](i, j) =
+                    expected_outputs[batch * half + i](j);
+            }
+        }
+    }
+
+
+    Network net;
+    net.add_splitter(3);
+
+    //Make sure the network has registered new leaf nodes
+    assert_unordered_map_equals({{0,0}, {1,0}, {2,0}}, net.active_branch_id_heads());
+
+    net.add_operator(make_shared<Linear1d>(N_INPUTS, N_OUTPUTS), 0);
+    net.add_operator(make_shared<Linear1d>(N_INPUTS, N_OUTPUTS), 1);
+    net.add_operator(make_shared<Linear1d>(N_INPUTS, N_OUTPUTS), 2);
+
+    //Make sure the splitter has the proper predecessors and successors
+    assert_unordered_map_equals({{0,1}, {1,2}, {2,3}}, net.component_at(0)->successors());
+    assert_unordered_map_equals(unordered_map<int32_t, int32_t>(), net.component_at(0)->predecessors());
+    assert_unordered_map_equals({{0,0}}, net.component_at(1)->predecessors());
+    assert_unordered_map_equals({{0,0}}, net.component_at(2)->predecessors());
+    assert_unordered_map_equals({{0,0}}, net.component_at(3)->predecessors());
+    assert_unordered_map_equals(unordered_map<int32_t, int32_t>(), net.component_at(1)->successors());
+    assert_unordered_map_equals(unordered_map<int32_t, int32_t>(), net.component_at(2)->successors());
+    assert_unordered_map_equals(unordered_map<int32_t, int32_t>(), net.component_at(3)->successors());
+
+    net.add_operator(make_shared<ReLU>(), 0);
+    net.add_operator(make_shared<ReLU>(), 1);
+    net.add_operator(make_shared<ReLU>(), 2);
+
+    net.add_operator(make_shared<Linear1d>(N_OUTPUTS, 3*N_OUTPUTS/4), 0);
+    net.add_operator(make_shared<Linear1d>(N_OUTPUTS, 3*N_OUTPUTS/4), 1);
+    net.add_operator(make_shared<Linear1d>(N_OUTPUTS, 3*N_OUTPUTS/4), 2);
+    
+    //Check that the network cannot be enabled
+    try {
+        net.enable();
+        throw test_failed("Enable check with multiple unterminated branches should fail");
+    }
+    catch(enable_failed_error& e) {
+        //Should be thrown.
+    }
+
+    net.add_combiner({1,0}, 2);
+
+    net.add_operator(make_shared<Linear1d>(3*N_OUTPUTS/4, N_OUTPUTS), 2);
+    net.add_operator(make_shared<ReLU>(), 2);
+    net.add_operator(make_shared<Linear1d>(N_OUTPUTS, N_OUTPUTS), 2);
+    net.add_operator(make_shared<Softmax>(1), 2);
+
+    net.set_loss_calculator(make_shared<CrossEntropy>());
+    net.set_optimizer(make_shared<SGD>(0.005, 0.9));
+
+    net.enable();
+
+    Network net2 = net;
+    net2.set_batch_size(N_OUTPUTS / 2);
+
+    cout << net << endl;
+    cout << net2 << endl;
+
+    finish the test!
+}
+
 
 
 
 int main() {
-    do documentation for get/set batch size, raw xarray operator i/o!
-    test_linear1d_forward();
-    test_linear1d_forward_1to1();
-    test_mse_crossentropy();
-    test_train_no_batch();
-    test_train_batch_1();
-    test_train_batch_2();
-    test_create_branch();
-    test_splitter_forward_backward();
-    test_combiner_forward_backward();
-    test_train_branch();
+    // test_linear1d_forward();
+    // test_linear1d_forward_1to1();
+    // test_mse_crossentropy();
+    // test_train_no_batch();
+    // test_train_batch_1();
+    // test_train_batch_2();
+    // test_create_branch();
+    // test_splitter_forward_backward();
+    // test_combiner_forward_backward();
+    // test_train_branch();
+    test_train_bin_to_onehot(4);
     cout << "Tests passed" << endl;
 }

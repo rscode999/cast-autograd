@@ -57,13 +57,15 @@ private:
     int32_t next_branch_id_;
 
     /**
-    * Indices in `components_` that are leaf nodes, i.e. have no successors. Element `i` is the leaf node index for branch `i`.
+    * Each key `b` is an active branch ID in the network. 
+    * Its value `i` is the index in `components_` containing branch `b`'s current leaf.
     *
     * Leaf nodes are the only nodes that can be added to.
-    * The length of this vector is the total number of branches used in this network, whether active or combined with another branch.
+    * The length of this map is the total number of branches used in this network, whether active or combined with another branch.
     *
-    * Element `i` equaling `NETWORK_BRANCH_COMBINED` indicates that branch `i` has been combined, and no longer exists.
-    * (This vector is never removed from.)
+    * When a branch is combined, the branch and its associated `components_` index are removed from this map.
+    *
+    * NOTE: Mappings are from branch IDs to *current* leaf indices in `components_`.
     */
     std::unordered_map<int32_t, int32_t> leaf_node_indices_;
     
@@ -144,7 +146,7 @@ private:
         int32_t leaf_node_indices_size = static_cast<int32_t>(leaf_node_indices_.size());
 
         // Check branch_id in range
-        if(branch_id < 0 || branch_id >= leaf_node_indices_size) {
+        if(branch_id < 0 || branch_id >= next_branch_id_) {
             throw bad_component_addition(
                 "Branch ID " + std::to_string(branch_id) + " must be on the interval [0, " + std::to_string(leaf_node_indices_size - 1) + "]",
                 check_location
@@ -478,9 +480,14 @@ public:
 
         //First operator loaded: Add the current node as an output
         if(leaf_node_indices_.size() == 0) {
-            str_assert(next_branch_id_ == 0, "Next branch ID must be 0 if the first splitter is loaded");
-            leaf_node_indices_[next_branch_id_] = 0;
-            next_branch_id_ = 1; //After branch 0 is created, the next possible branch ID is 1.
+            str_assert(next_branch_id_ == 0, "INTERNAL ERROR- Next branch ID must be 0 if the first splitter is loaded");
+            
+            //Register the new branches
+            for (int32_t i = 0; i < branch_count; ++i) {
+                leaf_node_indices_[next_branch_id_] = static_cast<int32_t>(components_.size()) - 1;
+                ++next_branch_id_;
+            }
+
             return;
         }
 
@@ -635,9 +642,9 @@ public:
             throw enable_failed_error("Network must have at least one operator");
         }
 
-        //Check that the network's first element is not a splitter
-        if(std::dynamic_pointer_cast<Splitter>(components_[0]) != nullptr) {
-            throw enable_failed_error("First operator in the network cannot be a splitter");
+        //Check that the network's first element is not a combiner
+        if(std::dynamic_pointer_cast<Combiner>(components_[0]) != nullptr) {
+            throw enable_failed_error("First operator in the network cannot be a combiner");
         }
 
         //Check that the network's first component is the input (i.e. has no predecessors)
@@ -966,7 +973,7 @@ public:
 
 template<typename CharT, typename Traits>
 std::basic_ostream<CharT, Traits>& operator<<(std::basic_ostream<CharT, Traits>& output_stream, const Network& network) {
-    output_stream << "Network, " << (network.enabled_ ? "enabled" : "disabled") << "\n";
+    output_stream << "Network, " << (network.enabled_ ? "enabled" : "disabled") << ", batch size " << (network.loss_calc_ ? std::to_string(network.batch_size()) : "N/A (no loss calculator assigned)") << "\n";
 
     //Export the loss calculator if it exists
     output_stream << "Loss calculator: ";

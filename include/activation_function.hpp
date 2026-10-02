@@ -172,7 +172,9 @@ public:
 
 
 /**
-* Computes a probability distribution derived from its input
+* Computes a probability distribution from its input.
+*
+* Has an adjustable temperature coefficient.
 */
 class Softmax : public ActivationFunction {
 private:

@@ -6,6 +6,8 @@
 - Implemented batch training
     - Network and LossCalculator modified to support batching. Batch size 0 (the default) indicates no training
 
+- Fixed bug where having a Splitter as the first component of a network causes dangling references for future component additions
+
 ## 0.10.1
 *15 September 2026*
 
