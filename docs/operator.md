@@ -9,5 +9,5 @@ Operators have exactly one predecessor and exactly one successor.
 Subclass of `NetworkComponent`.
 
 Subclasses
-* [ActivationFunction](activation_function)
-* [Layer](layer)
+* [ActivationFunction](activation_function.md)
+* [Layer](layer.md)

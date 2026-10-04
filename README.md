@@ -46,7 +46,13 @@ git clone --branch 0.8.2 https://github.com/xtensor-stack/xtl
 
 You should have 3 directories inside the "lib" folder: xtensor, xtensor-blas, and xtl. Each should contain the "include" subdirectory, which contains the library source files.
 
-If any of the installations didn't work, go to the repo's tags. The Tags button should be near the Branches dropdown. Ensure that the version tag exists. If not, contact the CAST development team.
+If any of the installations didn't work, visit each of the repos below and inspect the tags. The Tags button should be near the Branches dropdown. Ensure that the proper version tags exist.  
+Required version tags:
+- [XTensor](https://github.com/xtensor-stack/xtensor): 0.27.0
+- [XTensor BLAS](https://github.com/xtensor-stack/xtensor-blas): 0.23.0
+- [XTL](https://github.com/xtensor-stack/xtl): 0.8.2
+
+If any tags do not exist, contact the CAST development team.
 
 ### Other Setup
 
@@ -60,16 +66,18 @@ Ensure the options for "Desktop development with C/C++" and "MSVC Build Tools fo
 
 All objects are under the `cast` namespace. 
 
-Import CAST functionality using the files in the "include" directory:
+To import CAST functionality, use the files in the "include" directory:
 ```
 #include "include/cast.hpp"
 ```
 Or, point your compiler to use "include/cast.hpp" as a standard library header.
 
-You may want to use the `cast` namespace:
+To use the CAST namespace:
 ```
 using namespace cast;
 ```
+
+The remaining code in this README assume that you have used the `cast` namespace.
 
 <br>
 
@@ -118,7 +126,7 @@ To merge branches:
 //Adds a Combiner object to branch 0, set to merge branches 1 and 2 into branch 0
 net.add_combiner({1, 2}, 0);
 ```
-Once merged, branch IDs are not reused. Even if more branches are created, branches 1 and 2 cannot be added to.
+Once merged, branch IDs are not reused. If another branch were to be created, the new branch would have ID 3. In the network that was just created, even if more branches are created, branches 1 and 2 cannot be added to.
 
 See the [network branch creation section](docs/Home.md#network-branch-management) for more details on branches.
 
@@ -170,8 +178,10 @@ If layer dimensions are incompatible, the `forward` method throws the `cast::sha
 
 To compute the backwards pass, computing gradients for each layer:
 ```
-//Pass the predicted value from the forward pass, along with the expected forward-pass output
-net.backward(forward_output, {1, 1});
+xt::xarray<double> expected = {1, 1};
+
+//Use the predicted value from the forward pass, along with the expected forward-pass output
+net.backward(forward_output, expected);
 ```
 
 <br>
@@ -180,9 +190,40 @@ To optimize the network, using the network's optimizer and the gradients stored 
 ```
 net.optimize();
 ```
-If you have a reference to the optimizer used by the network, you may also optimize the network through the Optimizer object:
+To do the optimization pass directly through the Optimizer object:
 ```
-optimizer->step();
+//Get the network's optimizer
+std::shared_ptr<Optimizer> optim = net.optimizer();
+
+//Do the optimization pass
+optim->step();
+```
+The call to `set_optimizer` creates a deep copy of the assigned optimizer, so the parameter to `set_optimizer` does not affect the network.
+
+To train in batches:
+```
+//Set network batch size to 3
+net.set_batch_size(3);
+
+//Compute a forward pass
+xt::xarray<double> batch_input = {
+    {1,1},
+    {1,0},
+    {0,1},
+}
+
+xt::xarray<double> batch_output = net.forward(batch_input);
+
+//Compute a backwards pass
+xt::xarray<double> batch_expected_output = {
+    {0,0},
+    {0,0},
+    {1,1},
+}
+net.backward(batch_output, batch_expected_output);
+
+//Optimize
+net.optimize();
 ```
 
 

@@ -22,6 +22,8 @@ NetworkComponents are capable of creating deep pointer copies of themselves, so 
 
 Each subclass of `NetworkComponent` has its own constructor.
 
+---
+
 ### Shared Pointer Copying
 
 #### shared_ptr_deep_copy
@@ -114,37 +116,39 @@ If not overridden by a subclass, returns "network_component".
 
 #### forward
 
-*Signature:* `virtual std::vector<xt::xarray<double>> forward(std::vector<xt::xarray<double>> inputs) = 0`
+*Signature:* `xt::xarray<double> forward(const xt::xarray<double>& input) = 0`
 
-Returns the results of this operation on `inputs`.
+Returns the results of this operation on `input`.
 
-The component can have one or more inputs, and one or more outputs. Each input and output is given by an index in `inputs` or the returned list.
+Axis 0 of `upstream_gradients` separates elements in a batch.
+Even if not batch training, inputs to this method must be placed in batches.
 
 **Parameters**
 
-* `inputs` (`std::vector<xt::xarray<double>>`): Tensors to compute this operation on.
+* `input` (`const xt::xarray<double>&`): Tensors to compute this operation on.
 
 **Returns**
 
-* `std::vector<xt::xarray<double>>`: Results of this operator on `inputs`.
+* `xt::xarray<double>`: Results of this operator on `input`.
 
 ---
 
 #### backward
 
-*Signature:* `virtual std::vector<xt::xarray<double>> backward(std::vector<xt::xarray<double>> upstream_gradients) = 0`
+*Signature:* `virtual xt::xarray<double> backward(const xt::xarray<double>& upstream_gradients) = 0`
 
 Returns the backwards pass of this component on `upstream_gradients`.
 
-The component can have one or more inputs, and one or more outputs. Each input and output is given by an index in `inputs` or the returned list.
+Axis 0 of `upstream_gradients` separates elements in a batch.
+Even if not batch training, inputs to this method must be placed in batches.
 
 **Parameters**
 
-* `upstream_gradients` (`std::vector<xt::xarray<double>>`): Gradients from the previous operator.
+* `upstream_gradients` (`const xt::xarray<double>&`): Gradients from the previous operator. Has at least 2 dimensions.
 
 **Returns**
 
-* `std::vector<xt::xarray<double>>`: Results of the operator's backwards pass on `upstream_gradients`.
+* `xt::xarray<double>`: Results of the operator's backwards pass on `upstream_gradients`.
 
 ---
 

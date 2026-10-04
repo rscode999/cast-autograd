@@ -55,6 +55,9 @@ Creates a 1d linear layer with `input_dimension` inputs and `output_dimension` o
 Weights and biases are randomly initialized using a normal distribution with mean 0 and standard deviation 1.  
 Gradients are initialized to zeros.
 
+A 2d weight matrix is stored in `parameters() [0]`. A 1d bias vector is in `parameters() [1]`.
+Gradients of the weights and biases are stored in `gradients() [0]` and `gradients() [1]`, respectively.
+
 **Parameters**
 
 * `input_dimension` (`int32_t`): Required size of input vectors. Positive.
@@ -86,17 +89,17 @@ Example: "linear1d (2, 4)", for a Linear1d layer with 2 inputs and 4 outputs
 
 #### forward
 
-*Signature:* `std::vector<xt::xarray<double>> forward(std::vector<xt::xarray<double>> input) override`
+*Signature:* `xt::xarray<double> forward(const xt::xarray<double>& input) override`
 
 Returns the result of the linear forward pass on `input`.
 
 **Parameters**
 
-* `input` (`std::vector<xt::xarray<double>>`): List containing the layer input. Has exactly 1 element.
+* `input` (`const xt::xarray<double>&`): List containing the layer input. Has exactly 1 element.
 
 **Returns**
 
-* `std::vector<xt::xarray<double>>`: Forward pass result.
+* `xt::xarray<double>`: Forward pass result.
 
 **Exceptions**
 
@@ -106,14 +109,14 @@ Returns the result of the linear forward pass on `input`.
 
 #### backward
 
-*Signature:* `std::vector<xt::xarray<double>> backward(std::vector<xt::xarray<double>> upstream_gradients) override`
+*Signature:* `xt::xarray<double> backward(const xt::xarray<double>& upstream_gradients) override`
 
 Returns the gradients with respect to this layer and `upstream_gradients`, updating this layer's gradients.
 
 **Parameters**
 
-* `upstream_gradients` (`std::vector<xt::xarray<double>>`): Gradients from this layer's successor. Contains a single 1d vector.
+* `upstream_gradients` (`const xt::xarray<double>&`): Gradients from this layer's successor. Contains a single 1d vector.
 
 **Returns**
 
-* `std::vector<xt::xarray<double>>`: dY/dL, where Y is the overall derivative and L is this layer's data, contained in index 0 of the output.
+* `xt::xarray<double>`: dY/dL, where Y is the overall derivative and L is this layer's data, contained in index 0 of the output.

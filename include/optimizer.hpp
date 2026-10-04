@@ -57,6 +57,13 @@ public:
         return "optimizer";
     }
 
+    //////////////////////////////////////////////////////////////////////////
+
+    /**
+    * Removes network components under optimization, as well as any data used for training.
+    */
+    virtual void clear_training_state() = 0;
+
     /**
     * Sets the hyperparameters to `new_hyperparams`.
     * @param new_hyperparams hyperparameters to set. Length and preconditions for each hyperparameter depend on the optimizer subclass
@@ -183,6 +190,15 @@ public:
     //////////////////////////////////////////////////////////////////////////
     //////////////////////////////////////////////////////////////////////////
     //SETTERS
+
+    /**
+    * Removes the components of this optimizer and layer velocities used in training.
+    */
+    void clear_training_state() override {
+        components_.clear();
+        velocities_.clear();
+    }
+
 
     /**
     * Sets this SGD optimizer's momentum coefficient to `new_momentum_coeff`.

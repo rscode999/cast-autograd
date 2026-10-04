@@ -1,12 +1,23 @@
 # Change Log
 
 ## 0.11.0
-*In Progress*
+*4 October 2026*
+
+Support for batch training.
 
 - Implemented batch training
-    - Network and LossCalculator modified to support batching. Batch size 0 (the default) indicates no training
-
-- Fixed bug where having a Splitter as the first component of a network causes dangling references for future component additions
+    - Network and LossCalculator modified to support batching. Batch size 0 (the default) indicates no batches
+- Softmax requires 1d input vectors only
+- Setting a network's loss calculator or optimizer to `nullptr` is allowed
+- Optimizer and Network training state can be reset using the `clear_training_state` method
+- Setting individual network components requires the network to be disabled
+- `forward` and `backward` methods use constant references instead of deep-copied values
+- Bugs identified and fixed:
+    - Having a Splitter as the first component of a network causes dangling references for future component additions
+    - Dimension mismatches in Layer forward methods do not cause a `cast::shape_error`
+    - Softmax activation lazy evaluation causes segfaults
+    - Assigining a network using the copy constructor or assign operator makes a shallow copy of the optimizer
+    - Documentation for `forward` and `backward` methods in NetworkComponent and subclasses used `std::vector<xt::xarray>` instead of `xt::xarray`, even though the change was made in version 0.9.0
 
 ## 0.10.1
 *15 September 2026*
@@ -14,7 +25,6 @@
 - Network assignment creates deep copies of each layer. Previously, the default copy and assignment operations created shallow copies of the layer pointers.
 - Add methods to get and set individual network components
 - Add cross-entropy loss and softmax activation
-
 - Fix broken links in documentation pages
 
 ## 0.10.0

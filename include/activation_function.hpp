@@ -70,7 +70,7 @@ public:
     * @param input list of values to compute. Non-empty
     * @return sigmoid(x) for each element of `inputs`
     */
-    xt::xarray<double> forward(xt::xarray<double> input) override {
+    xt::xarray<double> forward(const xt::xarray<double>& input) override {
         str_assert(input.size() > 0, "Input vector must be non-empty");
 
         xt::xarray<double> output = (1 / (1 + exp(-input)) );
@@ -87,7 +87,7 @@ public:
     * @param upstream_gradients list of values to compute. Non-empty
     * @return d(Sigmoid(x))/dx for each element x of `upstream_gradients`
     */
-    xt::xarray<double> backward(xt::xarray<double> upstream_gradients) override {
+    xt::xarray<double> backward(const xt::xarray<double>& upstream_gradients) override {
         str_assert(upstream_gradients.size() > 0, "Upstream gradients in Sigmoid backwards pass must be non-empty");
         str_assert(prev_outputs_.shape() == upstream_gradients.shape(), "The forward-pass Sigmoid function must have been previously computed on an input of the same length as `upstream_gradients`");
 
@@ -148,7 +148,7 @@ public:
     * @param input list of values to compute. Non-empty
     * @return ReLU(x) for each element of `input`
     */
-    xt::xarray<double> forward(xt::xarray<double> input) override {
+    xt::xarray<double> forward(const xt::xarray<double>& input) override {
         str_assert(input.size() > 0, "Input vector must be non-empty");
         return xt::maximum(input, 0.0);
     }
@@ -161,7 +161,7 @@ public:
     * @param upstream_gradients list of values to compute. Non-empty
     * @return d(ReLU(x))/dx for each element x of `upstream_gradients`
     */
-    xt::xarray<double> backward(xt::xarray<double> upstream_gradients) override {
+    xt::xarray<double> backward(const xt::xarray<double>& upstream_gradients) override {
         str_assert(upstream_gradients.size() > 0, "Upstream gradients in ReLU backwards pass must be non-empty");
 
         xt::xarray<double> output = xt::where(upstream_gradients >= 0.0, 1.0, 0.0);
@@ -172,7 +172,7 @@ public:
 
 
 /**
-* Computes a probability distribution from its input.
+* Computes a probability distribution from its input. *For 1d input vectors only.*
 *
 * Has an adjustable temperature coefficient.
 */
@@ -242,58 +242,73 @@ public:
     /**
     * Returns the Softmax function applied to each element in `input`. Each element has the Softmax function applied to it.
     * Axis 0 of `input` divides batches, where each index of axis 0 is a single vector.
-    * @param input list of values to compute. Non-empty, and with more than 1 axis
+    * @param input list of values to compute. Non-empty, and with exactly 2 axes
     * @return Softmax(x) for each element of `input`
     */
-    xt::xarray<double> forward(xt::xarray<double> input) override {
+    xt::xarray<double> forward(const xt::xarray<double>& input) override {
         str_assert(input.size() > 0, "Input cannot be empty");
-        str_assert(input.shape().size() > 1, "Input must have multiple axes (axis 0 is for batch size only)");
+        str_assert(input.dimension() == 2, "Softmax must have exactly 2 axes");
 
-        // Store the last inputs of the calculation
         prev_outputs_ = input;
 
-        // Apply the temperature coefficient scaling
-        xt::xarray<double> scaled_input = input / temp_coeff_;
+        // Temperature scaling
+        xt::xarray<double> scaled_input = xt::eval(input / temp_coeff_);
 
-        // Subtract the maximum along axis 1 (features) for numerical stability, 
-        // keeping dimensions intact for proper broadcasting across the batch axis (axis 0).
-        auto max_vals = xt::amax(scaled_input, {1}, xt::keep_dims);
-        auto shifted = scaled_input - max_vals;
+        // Maximum for each sample: [batch, 1]
+        xt::xarray<double> max_vals =
+            xt::eval(xt::amax(scaled_input, {1}, xt::keep_dims));
 
-        // Compute the exponential of the shifted values
-        auto exp_vals = xt::exp(shifted);
+        // [batch, features] - [batch, 1]
+        xt::xarray<double> shifted =
+            xt::eval(scaled_input - max_vals);
 
-        // Compute the sum of exponentials along axis 1, keeping dimensions
-        auto sum_exp = xt::sum(exp_vals, {1}, xt::keep_dims);
+        // [batch, features]
+        xt::xarray<double> exp_vals =
+            xt::eval(xt::exp(shifted));
 
-        // Divide exponentiated values by the sum to get the softmax probabilities
-        return exp_vals / sum_exp;
+        // Sum for each sample: [batch, 1]
+        xt::xarray<double> sum_exp =
+            xt::eval(xt::sum(exp_vals, {1}, xt::keep_dims));
+
+        // [batch, features]
+        xt::xarray<double> output =
+            xt::eval(exp_vals / sum_exp);
+
+        return output;
     }
+
 
 
     /**
     * Returns the derivative of Softmax applied to each parameter of `upstream_gradients`.
     * Axis 0 of `input` divides batches, where each index of axis 0 is a single vector.
-    * @param upstream_gradients list of values to compute. Non-empty, with more than 1 axis
+    * @param upstream_gradients list of values to compute. Non-empty, with exactly 2 axes
     * @return d(Softmax(x))/dx for each element x of `upstream_gradients`
     */
-    xt::xarray<double> backward(xt::xarray<double> upstream_gradients) override {
+    xt::xarray<double> backward(const xt::xarray<double>& upstream_gradients) override {
         str_assert(upstream_gradients.size() > 0, "Upstream gradients cannot be empty");
-        str_assert(upstream_gradients.shape().size() > 1, "Input must have multiple axes (axis 0 is for batch size only)");
+        str_assert(upstream_gradients.dimension() == 2,"Upstream gradients must have exactly 2 axes");
+        str_assert(prev_outputs_.dimension() == 2, "Previous outputs must have exactly 2 axes");
+        str_assert(prev_outputs_.shape() == upstream_gradients.shape(), "Upstream gradients must have the same shape as the input");
 
-        // Recompute the forward softmax output (S) using prev_outputs_ and temp_coeff_
-        auto scaled = prev_outputs_ / temp_coeff_;
-        auto max_vals = xt::amax(scaled, {1}, xt::keep_dims);
-        auto exp_vals = xt::exp(scaled - max_vals);
-        auto S = exp_vals / xt::sum(exp_vals, {1}, xt::keep_dims);
+        xt::xarray<double> scaled = xt::eval(prev_outputs_ / temp_coeff_);
 
-        // Compute the dot product term: sum(upstream_gradients * S) along axis 1
-        auto sum_grad_s = xt::sum(upstream_gradients * S, {1}, xt::keep_dims);
+        xt::xarray<double> max_vals = xt::eval(xt::amax(scaled, {1}, xt::keep_dims));
 
-        // Apply the softmax Jacobian-vector product formula scaled by the temperature:
-        // dz = S * (upstream_gradients - sum_grad_s) / temp_coeff_
-        return S * (upstream_gradients - sum_grad_s) / temp_coeff_;
+        xt::xarray<double> shifted = xt::eval(scaled - max_vals);
+        xt::xarray<double> exp_vals = xt::eval(xt::exp(shifted));
+
+        xt::xarray<double> sum_exp = xt::eval(xt::sum(exp_vals, {1}, xt::keep_dims));
+
+        xt::xarray<double> S = xt::eval(exp_vals / sum_exp);
+
+        xt::xarray<double> weighted_grad = xt::eval(upstream_gradients * S);
+        xt::xarray<double> sum_grad_s = xt::eval(xt::sum(weighted_grad, {1}, xt::keep_dims));
+        xt::xarray<double> result = xt::eval(S * (upstream_gradients - sum_grad_s) / temp_coeff_);
+
+        return result;
     }
+
 };
 
 

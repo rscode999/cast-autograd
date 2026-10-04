@@ -37,7 +37,9 @@ class Network {
 private:
 
     /**
-     * Network components that the network uses, in the order that they were added
+     * Network components that the network uses, in the order that they were added.
+     *
+     * The index of each component in this field is the component's ID.
      */
     std::vector<std::shared_ptr<NetworkComponent>> components_;
 
@@ -58,14 +60,11 @@ private:
 
     /**
     * Each key `b` is an active branch ID in the network. 
-    * Its value `i` is the index in `components_` containing branch `b`'s current leaf.
+    * Its value `i` is the index in `components_` containing the most recently added component in branch `b`.
     *
-    * Leaf nodes are the only nodes that can be added to.
-    * The length of this map is the total number of branches used in this network, whether active or combined with another branch.
+    * The length of this map is the total number of branches currently used in this network.
     *
     * When a branch is combined, the branch and its associated `components_` index are removed from this map.
-    *
-    * NOTE: Mappings are from branch IDs to *current* leaf indices in `components_`.
     */
     std::unordered_map<int32_t, int32_t> leaf_node_indices_;
     
@@ -84,7 +83,7 @@ private:
     * Stores all data required for a network component to execute.
     * Items of this type are created and placed in a queue during the forward or backward pass.
     *
-    * Contains: component's branch ID, index in the `components_` list, and any inputs it has.
+    * Fields: component's branch ID (`branch_id`), index in the `components_` list (`component_index`), and the input to the component (`component_input`).
     */
     struct ComponentExecutionData {
         /**
@@ -248,17 +247,23 @@ public:
 
 
     /**
-    * Copies `other_network` into a new network.
+    * Copies `other_network` into a new network. The new network is disabled.
     *
     * All copied data is a deep copy, so modifying `other_network` does not affect the newly created network.
     * @param other_network network to copy
     */
     Network(const Network& other_network) {
-        enabled_ = other_network.enabled_;
+        enabled_ = false;
         next_branch_id_ = other_network.next_branch_id_;
         leaf_node_indices_ = other_network.leaf_node_indices_;
         loss_calc_ = (other_network.loss_calc_) ? other_network.loss_calc_->shared_ptr_deep_copy() : nullptr;
-        optimizer_ = (other_network.optimizer_) ? other_network.optimizer_->shared_ptr_deep_copy() : nullptr;
+        if(other_network.optimizer_) {
+            optimizer_ = other_network.optimizer_->shared_ptr_deep_copy();
+            optimizer_->clear_training_state();
+        }
+        else {
+            optimizer_.reset();
+        }
 
         //deep copy the components
         components_ = {};
@@ -294,7 +299,7 @@ public:
     * A component's ID is the 0-based order in which the component was added to the network.
     * 
     * Branches that have been merged are not included.
-    * @return mapping of: branch ID -> final index of the branch
+    * @return mapping of: branch ID -> ID of the final component of the branch
     */
     std::unordered_map<int32_t, int32_t> active_branch_id_heads() const {
         return leaf_node_indices_;
@@ -341,6 +346,23 @@ public:
         return enabled_;
     }
 
+
+
+    /**
+    * @return shallow copy of the network's loss calculator. Returns `nullptr` if the network has no loss calculator.
+    */
+    std::shared_ptr<LossCalculator> loss_calculator() const {
+        return loss_calc_;
+    }
+
+    
+
+    /**
+    * @return shallow copy of the network's optimizer, which can be used to modify the network's optimizer. Returns `nullptr` if the network has no optimizer.
+    */
+    std::shared_ptr<Optimizer> optimizer() const {
+        return optimizer_;
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -467,11 +489,9 @@ public:
     void add_splitter(int32_t branch_count, int32_t branch_id = 0, std::source_location loc = std::source_location::current()) {
         str_assert(branch_count >= 2, "Branch count must be at least 2; received " + std::to_string(branch_count), loc);
         check_component_indices_({}, branch_id, loc);
-        #ifndef NDEBUG
         if((branch_count + next_branch_id_) < 0 || (branch_count + next_branch_id_) > 2000000000) {
             throw std::out_of_range("Cannot add more than 2 billion branches to the network");
         }
-        #endif
 
         std::shared_ptr<Splitter> splitter = std::make_shared<Splitter>(branch_count);
         //Register the component
@@ -510,100 +530,15 @@ public:
 
 
     /**
-    * Sets the network's batch size to `new_batch_size`.
-    * A batch size of 0 means that the network does not use batches.
+    * Removes all data related to training in the network's optimizer.
     *
-    * Requires that a loss calculator is set. If not, throws `cast::bad_network_config`.
-    * @param new_batch_size batch size to set. Non-negative.
+    * If the network has no defined optimizer, throws `cast::bad_network_config`.
     */
-    void set_batch_size(int32_t new_batch_size) {
-        str_assert(new_batch_size >= 0, "New batch size must be non-negative- got " + std::to_string(new_batch_size));
-        if(!loss_calc_) {
-            throw bad_network_config("Loss calculator required to set batch size");
-        }
-        loss_calc_->set_batch_size(new_batch_size);
-    }
-
-
-    /**
-    * Sets the operator with ID `component_id` to `op`.
-    * 
-    * A component's ID is the 0-based order in which the component was added to the network.
-    * ID 0 is the first component added, 1 is the second component added, and so on.
-    *
-    * If the types of the newly added operator and the operator being modified are different, throws `cast::bad_component_addition`.
-    *
-    * The pointer to `op` cannot be used to modify the network's newly altered operator.
-    * @param component_id component number to set. At least 0, and less than the number of components added so far.
-    * @param op operator to set
-    */
-    void set_operator_at(int32_t component_id, std::shared_ptr<Operator> op) {
-        str_assert(0 <= component_id && component_id < (int32_t)components_.size(), "Component ID must be at least 0 and at most " + std::to_string(components_.size()) + ": got " + std::to_string(component_id));
-        
-        if(!(std::is_same_v<decltype(op), decltype(components_[component_id])>)) {
-            throw bad_component_addition("Operator to set must be of the same type as the operator with ID " + std::to_string(component_id));
-        }
-        
-        components_[component_id].reset();
-        components_[component_id] = op->shared_ptr_deep_copy();
-    }
-
-
-    /**
-     * Sets this network's loss calculator to `calc`.
-     *
-     * To use this method, the network cannot be enabled.
-     * @param calc new loss calculator to use. Non-null
-     */
-    void set_loss_calculator(std::shared_ptr<LossCalculator> calc) {
-        str_assert(calc != nullptr, "New loss calculator must be non-null");
-        //Enable check
-        if(enabled_) {
-            throw bad_network_config("Network cannot be enabled to set the loss calculator");
-        }
-
-        //Reset the loss calculator if it exists
-        if(loss_calc_) {
-            loss_calc_.reset();
-        }
-        loss_calc_ = calc;
-    }
-
-
-
-    /**
-     * Sets this network's optimizer to `optim`.
-     *
-     * The pointer to the optimizer can be manipulated from outside the network.
-     *
-     * To use this method, the network cannot be enabled.
-     * @param optim new optimizer to use. Non-null
-     */
-    void set_optimizer(std::shared_ptr<Optimizer> optim) {
-        str_assert(optim != nullptr, "New optimizer must be non-null");
-        //Enable check
-        if(enabled_) {
-            throw bad_network_config("Network cannot be enabled to set the optimizer");
-        }
-
-        //Reset optimizer if it exists
-        if(optimizer_) {
-            optimizer_.reset();
-        }
-        optimizer_ = optim;
-    }
-
-
-    /**
-    * Sets the network's optimizer hyperparameters to `new_hyperparams`.
-    *
-    * The preconditions on `new_hyperparams` depend on the optimizer used.
-    */
-    void set_optimizer_hyperparams(std::initializer_list<double> new_hyperparams) {
+    void clear_training_state() {
         if(!optimizer_) {
-            throw bad_network_config("The network has no optimizer");
+            throw bad_network_config("Optimizer must be defined to clear its training state");
         }
-        optimizer_->set_hyperparameters(new_hyperparams);
+        optimizer_->clear_training_state();
     }
 
 
@@ -615,16 +550,18 @@ public:
         enabled_ = false;
     }
 
+    
 
     /**
      * Checks if the network has the necessary components to run. 
-     * If not, throws `cast::enable_failed_error`. If so, allows training and optimization.
+     * If not, throws `cast::enable_failed_error` (a subclass of `cast::bad_network_config`, which is itself a subclass of `std::exception`). 
+     * If so, allows training and optimization.
      *
      * If successful, this method initializes the stored optimizer.
      *
      * Conditions to run:
      * The network must have a loss calculator, optimizer, and at least one component.
-     * The network must have exactly one output.
+     * The network must have exactly one unterminated branch.
      */
     void enable() {
         if(!loss_calc_) {
@@ -636,7 +573,7 @@ public:
 
         //Check that the network has operators
         if((int32_t)leaf_node_indices_.size() == 0) {
-            throw enable_failed_error("Network must have at least one operator");
+            throw enable_failed_error("Network must have at least one component");
         }
         if(components_.size() == 0) {
             throw enable_failed_error("Network must have at least one operator");
@@ -679,6 +616,116 @@ public:
     }
 
 
+
+    /**
+    * Sets the network's batch size to `new_batch_size`.
+    * A batch size of 0 means that the network does not use batches.
+    *
+    * Requires that a loss calculator is set. If not, throws `cast::bad_network_config`.
+    *
+    * To use this method, the network cannot be enabled.
+    * @param new_batch_size batch size to set. Non-negative.
+    */
+    void set_batch_size(int32_t new_batch_size) {
+        str_assert(new_batch_size >= 0, "New batch size must be non-negative- got " + std::to_string(new_batch_size));
+        if(!loss_calc_) {
+            throw bad_network_config("Loss calculator required to set batch size");
+        }
+        if(enabled_) {
+            throw bad_network_config("Cannot change the network's batch size if the network is enabled");
+        }
+        loss_calc_->set_batch_size(new_batch_size);
+    }
+
+
+    /**
+    * Sets the operator with ID `component_id` to `op`.
+    * 
+    * A component's ID is the 0-based order in which the component was added to the network.
+    * ID 0 is the first component added, 1 is the second component added, and so on.
+    *
+    * If the types of the newly added operator and the operator being modified are different, throws `cast::bad_component_addition`.
+    *
+    * The pointer to `op` cannot be used to modify the network's newly altered operator.
+    * @param component_id component number to set. At least 0, and less than the number of components added so far.
+    * @param op operator to set
+    */
+    void set_operator_at(int32_t component_id, std::shared_ptr<Operator> op) {
+        str_assert(0 <= component_id && component_id < (int32_t)components_.size(), "Component ID must be at least 0 and at most " + std::to_string(components_.size()) + ": got " + std::to_string(component_id));
+        
+        if(enabled_) {
+            throw bad_network_config("Network must be disabled to change components");
+        }
+        if(!(std::is_same_v<decltype(op), decltype(components_[component_id])>)) {
+            throw bad_component_addition("Operator to set must be of the same type as the operator with ID " + std::to_string(component_id));
+        }
+        
+        components_[component_id].reset();
+        components_[component_id] = op->shared_ptr_deep_copy();
+    }
+
+
+    /**
+     * Sets this network's loss calculator to `calc`.
+     *
+     * If `calc` is `nullptr`, the current loss calculator is removed.
+     *
+     * To use this method, the network cannot be enabled.
+     * @param calc new loss calculator to use
+     */
+    void set_loss_calculator(std::shared_ptr<LossCalculator> calc) {
+        //Enable check
+        if(enabled_) {
+            throw bad_network_config("Network cannot be enabled to set the loss calculator");
+        }
+
+        //Reset the loss calculator if it exists
+        if(loss_calc_) {
+            loss_calc_.reset();
+        }
+
+        loss_calc_ = calc ? calc->shared_ptr_deep_copy() : nullptr;
+    }
+
+
+
+    /**
+     * Sets this network's optimizer to `optim`.
+     *
+     * The network creates a deep copy of `optim`, so modifying `optim` does not modify the network's new optimizer.
+     *
+     * To use this method, the network cannot be enabled.
+     * @param optim new optimizer to use
+     */
+    void set_optimizer(std::shared_ptr<Optimizer> optim) {
+        //Enable check
+        if(enabled_) {
+            throw bad_network_config("Network cannot be enabled to set the optimizer");
+        }
+
+        //Reset optimizer if it exists
+        if(optimizer_) {
+            optimizer_.reset();
+        }
+        optimizer_ = optim ? optim->shared_ptr_deep_copy() : nullptr;
+    }
+
+
+    /**
+    * Sets the network's optimizer hyperparameters to `new_hyperparams`.
+    *
+    * The preconditions on `new_hyperparams` depend on the optimizer used.
+    * @param new_hyperparams list of new hyperparameters. Preconditions for the hyperparameter list depend on the optimizer used. 
+    */
+    void set_optimizer_hyperparams(std::initializer_list<double> new_hyperparams) {
+        if(!optimizer_) {
+            throw bad_network_config("The network has no optimizer");
+        }
+        optimizer_->set_hyperparameters(new_hyperparams);
+    }
+
+
+
     ///////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -690,7 +737,7 @@ public:
      * Returns the result of the network's forward pass on `input`.
      *
      * If the network trains in batches, i.e. `batch_size()` is positive, axis 0 of `input` is the batch index.
-     * All elements on axis 0 must be valid inputs to the network.
+     * In batch training, all elements on axis 0 must be valid inputs to the network.
      *
      * Throws `cast::shape_error` if layer dimensions are incompatible.
      *
@@ -698,12 +745,12 @@ public:
      * @param input tensor to compute forward pass on
      * @return result of forward pass
      */
-    xt::xarray<double> forward(xt::xarray<double> input) {
+    xt::xarray<double> forward(const xt::xarray<double>& input) {
         if(!enabled_) {
             throw bad_network_config("Must enable the network prior to training");
         }
         //Batch size, number of batches check
-        str_assert(batch_size() == 0 || input.shape() [0] == batch_size(), "If training with batch size, input's axis 0 must have " + std::to_string(batch_size()) + " elements (got " + std::to_string(input.shape()[0]) + ")");
+        str_assert(batch_size() == 0 || input.shape() [0] == batch_size(), "If training in batches, input's axis 0 must have " + std::to_string(batch_size()) + " elements (got " + std::to_string(input.shape()[0]) + ")");
 
         std::queue<ComponentExecutionData> execution_queue;
 
@@ -805,12 +852,13 @@ public:
      * Stores updated gradients inside the network layers, for use by the network's optimizer.
      *
      * Throws `std::runtime_error` with the message "Dot shape mismatch" if given batched training data when not training with batches.
+     * Throws `cast::shape_error` if component dimensions are incompatible.
      *
      * The network must be enabled to use this method.
      * @param predicted network's prediction for a given input
      * @param expected what the network should have predicted for the input
      */
-    void backward(xt::xarray<double> predicted, xt::xarray<double> expected) {
+    void backward(const xt::xarray<double>& predicted, const xt::xarray<double>& expected) {
         if(!enabled_) {
             throw bad_network_config("Must enable the network prior to computing backwards pass");
         }
@@ -876,7 +924,15 @@ public:
             }
             // Handle single operators
             else {
-                xt::xarray<double> op_output = current_component->backward(current.component_input);
+                xt::xarray<double> op_output;
+
+                //Compute the output. If incompatible shapes, re-throw the shape error
+                try {
+                    op_output = current_component->backward(current.component_input);
+                }
+                catch(shape_error& e) {
+                    throw shape_error("Backwards-pass input to " + current_component->to_string() + " (branch " + std::to_string(current_component->branch_id()) + "): " + e.what());
+                }
 
                 const std::unordered_map<int32_t, int32_t>& preds = current_component->predecessors();
                 //Stop early if there are no predecessors (it's the first component in the network)
@@ -928,7 +984,7 @@ public:
     //OPERATOR OVERLOADS
 
     /**
-    * Deep-copies the data from `other_network` into this network.
+    * Deep-copies the data from `other_network` into this network. The newly assigned network is disabled.
     * @param other_network network to copy
     * @return deep copy of `other_network`
     */
@@ -938,11 +994,17 @@ public:
             return *this;
         }
 
-        enabled_ = other_network.enabled_;
+        enabled_ = false;
         next_branch_id_ = other_network.next_branch_id_;
         leaf_node_indices_ = other_network.leaf_node_indices_;
         loss_calc_ = (other_network.loss_calc_) ? other_network.loss_calc_->shared_ptr_deep_copy() : nullptr;
-        optimizer_ = (other_network.optimizer_) ? other_network.optimizer_->shared_ptr_deep_copy() : nullptr;
+        if(other_network.optimizer_) {
+            optimizer_ = other_network.optimizer_->shared_ptr_deep_copy();
+            optimizer_->clear_training_state();
+        }
+        else {
+            optimizer_.reset();
+        }
 
         components_ = {};
         for(std::shared_ptr<NetworkComponent> component : other_network.components_) {

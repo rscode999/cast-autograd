@@ -4,6 +4,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <immintrin.h>
 #include <memory>
 #include <unordered_map>
 #include <xtensor/containers/xarray.hpp>
@@ -209,9 +210,8 @@ void test_train_batch_1() {
     net.set_loss_calculator(loss_calc);
     net.set_optimizer(make_shared<SGD>(0.02, 0.9));
     
-    net.enable();
-
     net.set_batch_size(1);
+    net.enable();
 
     vector<xarray<double>> inputs = {
         xarray<double>{{0, 0}},
@@ -264,9 +264,8 @@ void test_train_batch_2() {
     net.set_loss_calculator(loss_calc);
     net.set_optimizer(make_shared<SGD>(0.02, 0.9));
     
-    net.enable();
-
     net.set_batch_size(2);
+    net.enable();
 
     vector<xarray<double>> inputs = {
         xarray<double>{{0, 0}, {0,1}},
@@ -341,6 +340,24 @@ void test_create_branch() {
     assert_unordered_map_equals(expected_branch_ids, net.active_branch_id_heads());
 
 
+    //Try to add a combiner to its own branch, and verify that it throws an exception
+    try {
+        net.add_combiner({2}, 2);
+        throw test_failed("Merging branch 2 from within branch 2 should cause a cast::bad_component_addition");
+    }
+    catch(bad_component_addition& e) {
+        //Test passed
+    }
+
+    //Try to merge a branch that does not exist
+    try {
+        net.add_combiner({3}, 2);
+        throw test_failed("Merging branch 3, which does not exist, should cause a cast::bad_component_addition");
+    }
+    catch(bad_component_addition& e) {
+        //Test passed
+    }
+
     net.add_combiner({2}, 1);
     //After merging branch 2 into branch 1, there should be 2 remaining branch IDs (0 and 1)
     expected_branch_ids = {
@@ -396,6 +413,104 @@ void test_create_branch() {
         std::unordered_map<int32_t, int32_t>(),
         comp9->successors()
     );
+}
+
+
+
+/**
+* Creates a network with a splitter first
+*/
+void test_create_branch_splitter_first() {
+    Network net;
+    net.add_splitter(3);
+
+    //Make sure the network has registered new leaf nodes
+    assert_unordered_map_equals({{0,0}, {1,0}, {2,0}}, net.active_branch_id_heads());
+
+    net.add_operator(make_shared<Linear1d>(2, 4), 0);
+    net.add_operator(make_shared<Linear1d>(2, 4), 1);
+    net.add_operator(make_shared<Linear1d>(2, 4), 2);
+
+    //Make sure the splitter has the proper predecessors and successors
+    assert_unordered_map_equals({{0,1}, {1,2}, {2,3}}, net.component_at(0)->successors());
+    assert_unordered_map_equals(unordered_map<int32_t, int32_t>(), net.component_at(0)->predecessors());
+
+    //Make sure the new components have the proper predecessors and successors
+    assert_unordered_map_equals({{0,0}}, net.component_at(1)->predecessors());
+    assert_unordered_map_equals({{0,0}}, net.component_at(2)->predecessors());
+    assert_unordered_map_equals({{0,0}}, net.component_at(3)->predecessors());
+    assert_unordered_map_equals(unordered_map<int32_t, int32_t>(), net.component_at(1)->successors());
+    assert_unordered_map_equals(unordered_map<int32_t, int32_t>(), net.component_at(2)->successors());
+    assert_unordered_map_equals(unordered_map<int32_t, int32_t>(), net.component_at(3)->successors());
+
+    //Combine into branch 2
+    net.add_combiner({1,0}, 2); //Component ID = 4
+
+    //Check network branch heads
+    assert_unordered_map_equals({{2, 4}}, net.active_branch_id_heads());
+
+    //Combiner has proper predecessors and successors
+    assert_unordered_map_equals({{0,1}, {1,2}, {2,3}}, net.component_at(4)->predecessors());
+    assert_unordered_map_equals(unordered_map<int32_t, int32_t>(), net.component_at(4)->successors());
+
+    //Operators have proper predecessors and successors
+    assert_unordered_map_equals({{0,0}}, net.component_at(1)->predecessors());
+    assert_unordered_map_equals({{0,0}}, net.component_at(2)->predecessors());
+    assert_unordered_map_equals({{0,0}}, net.component_at(3)->predecessors());
+    assert_unordered_map_equals({{2,4}}, net.component_at(1)->successors());
+    assert_unordered_map_equals({{2,4}}, net.component_at(2)->successors());
+    assert_unordered_map_equals({{2,4}}, net.component_at(3)->successors());
+}
+
+
+
+/**
+* Tests the very weird case where a network consists only of control flow components
+*/
+void test_create_control_flow_only() {
+    Network net;
+    net.add_splitter(2);
+    net.add_splitter(2);
+
+    //There should be 3 branches in total
+    assert_unordered_map_equals({{0,1}, {1,0}, {2,1}}, net.active_branch_id_heads());
+
+    //Splitter 0 has a successor: branch 0, ID 1
+    assert_unordered_map_equals({{0,1}}, net.component_at(0)->successors());
+    //Splitter 1 should have no successors and one predecessor
+    assert_unordered_map_equals(unordered_map<int32_t, int32_t>(), net.component_at(1)->successors());
+    assert_unordered_map_equals({{0, 0}}, net.component_at(1)->predecessors());
+
+    //Splitter 0 should have no predecessors
+    assert_unordered_map_equals(unordered_map<int32_t, int32_t>(), net.component_at(0)->predecessors());
+    //Splitter 1 should have one predecessor: branch 0, component 0
+    assert_unordered_map_equals({{0, 0}}, net.component_at(1)->predecessors());
+
+    net.add_combiner({2}, 1); //Component ID: 2
+
+    //Network should have 2 available branches now
+    assert_unordered_map_equals({{0, 1},{1, 2}}, net.active_branch_id_heads());
+    //Branch 0's ending component is component 1. Branch 1's ending component is component 2
+
+    assert_unordered_map_equals({{0,1}}, net.component_at(2)->predecessors());
+    //Splitter 1 should have a successor now
+    assert_unordered_map_equals({{1,2}}, net.component_at(1)->successors());
+
+    net.add_combiner({0}, 1); //Component ID: 3
+
+    //Network has only one active branch, 1, with component 3 as its head
+    assert_unordered_map_equals({{1, 3}}, net.active_branch_id_heads());
+
+    //New combiner's predecessors are: branch 0, component 1; branch 1, component 2
+    assert_unordered_map_equals({{0,1}, {1,2}}, net.component_at(3)->predecessors());
+    assert_unordered_map_equals(unordered_map<int32_t, int32_t>(), net.component_at(3)->successors());
+
+    //Splitter 1's successor is combiner 3. Original predecessors are kept
+    assert_unordered_map_equals({{1, 3}}, net.component_at(1)->successors());
+    assert_unordered_map_equals({{0, 0}}, net.component_at(1)->predecessors());
+    //Combiner 2's successor is combiner 3. Original predecessors are kept
+    assert_unordered_map_equals({{1, 3}}, net.component_at(2)->successors());
+    assert_unordered_map_equals({{0, 1}, {0, 0}}, net.component_at(2)->predecessors());
 }
 
 
@@ -589,11 +704,14 @@ void test_train_branch() {
 
 
 /**
-* Trains on the binary to one-hot dataset, with `n_inputs` inputs.
+* Trains on the binary to one-hot dataset.
+* Uses cross-entropy and softmax, while using the copy constructor to make another network with a nonzero batch size.
 */
-void test_train_bin_to_onehot(const int32_t& N_INPUTS) {
+void test_ce_sm_batch_assign() {
 
-    const int N_OUTPUTS = pow(2, N_INPUTS);
+    const int32_t N_INPUTS = 4;
+    const int32_t N_OUTPUTS = pow(2, N_INPUTS);
+    const int32_t N_EPOCHS = 2000;
 
     //Make the dataset
     vector<xarray<double>> inputs;
@@ -618,13 +736,13 @@ void test_train_bin_to_onehot(const int32_t& N_INPUTS) {
 
     //Make the batch training dataset, with 1/2 of the inputs and expected outputs per index
     vector<xt::xarray<double>> input_batches(2);
-    vector<xt::xarray<double>> output_batches(2);
+    vector<xt::xarray<double>> expected_outputs_batches(2);
     const size_t half = N_OUTPUTS / 2;
 
     for (int batch = 0; batch < 2; ++batch) {
         input_batches[batch] = xt::zeros<double>({half, static_cast<size_t>(N_INPUTS)});
 
-        output_batches[batch] = xt::zeros<double>({half, static_cast<size_t>(N_OUTPUTS)});
+        expected_outputs_batches[batch] = xt::zeros<double>({half, static_cast<size_t>(N_OUTPUTS)});
 
         for (size_t i = 0; i < half; ++i) {
             for (size_t j = 0; j < N_INPUTS; ++j) {
@@ -633,85 +751,96 @@ void test_train_bin_to_onehot(const int32_t& N_INPUTS) {
             }
 
             for (size_t j = 0; j < N_OUTPUTS; ++j) {
-                output_batches[batch](i, j) =
+                expected_outputs_batches[batch](i, j) =
                     expected_outputs[batch * half + i](j);
             }
         }
     }
 
-
     Network net;
     net.add_splitter(3);
 
-    //Make sure the network has registered new leaf nodes
-    assert_unordered_map_equals({{0,0}, {1,0}, {2,0}}, net.active_branch_id_heads());
-
-    net.add_operator(make_shared<Linear1d>(N_INPUTS, N_OUTPUTS), 0);
-    net.add_operator(make_shared<Linear1d>(N_INPUTS, N_OUTPUTS), 1);
-    net.add_operator(make_shared<Linear1d>(N_INPUTS, N_OUTPUTS), 2);
-
-    //Make sure the splitter has the proper predecessors and successors
-    assert_unordered_map_equals({{0,1}, {1,2}, {2,3}}, net.component_at(0)->successors());
-    assert_unordered_map_equals(unordered_map<int32_t, int32_t>(), net.component_at(0)->predecessors());
-    assert_unordered_map_equals({{0,0}}, net.component_at(1)->predecessors());
-    assert_unordered_map_equals({{0,0}}, net.component_at(2)->predecessors());
-    assert_unordered_map_equals({{0,0}}, net.component_at(3)->predecessors());
-    assert_unordered_map_equals(unordered_map<int32_t, int32_t>(), net.component_at(1)->successors());
-    assert_unordered_map_equals(unordered_map<int32_t, int32_t>(), net.component_at(2)->successors());
-    assert_unordered_map_equals(unordered_map<int32_t, int32_t>(), net.component_at(3)->successors());
-
-    net.add_operator(make_shared<ReLU>(), 0);
-    net.add_operator(make_shared<ReLU>(), 1);
-    net.add_operator(make_shared<ReLU>(), 2);
-
-    net.add_operator(make_shared<Linear1d>(N_OUTPUTS, 3*N_OUTPUTS/4), 0);
-    net.add_operator(make_shared<Linear1d>(N_OUTPUTS, 3*N_OUTPUTS/4), 1);
-    net.add_operator(make_shared<Linear1d>(N_OUTPUTS, 3*N_OUTPUTS/4), 2);
+    net.add_operator(make_shared<Linear1d>(N_INPUTS, N_OUTPUTS/2), 0);
+    net.add_operator(make_shared<Linear1d>(N_INPUTS, N_OUTPUTS/2), 1);
+    net.add_operator(make_shared<Linear1d>(N_INPUTS, N_OUTPUTS/2), 2);
     
-    //Check that the network cannot be enabled
-    try {
-        net.enable();
-        throw test_failed("Enable check with multiple unterminated branches should fail");
-    }
-    catch(enable_failed_error& e) {
-        //Should be thrown.
-    }
-
     net.add_combiner({1,0}, 2);
 
-    net.add_operator(make_shared<Linear1d>(3*N_OUTPUTS/4, N_OUTPUTS), 2);
-    net.add_operator(make_shared<ReLU>(), 2);
+    net.add_operator(make_shared<Linear1d>(N_OUTPUTS/2, N_OUTPUTS), 2);
+    net.add_operator(make_shared<Sigmoid>(), 2);
+    net.add_operator(make_shared<Linear1d>(N_OUTPUTS, N_OUTPUTS), 2);
+    net.add_operator(make_shared<Sigmoid>(), 2);
     net.add_operator(make_shared<Linear1d>(N_OUTPUTS, N_OUTPUTS), 2);
     net.add_operator(make_shared<Softmax>(1), 2);
 
-    net.set_loss_calculator(make_shared<CrossEntropy>());
+    std::shared_ptr<CrossEntropy> ce_loss = make_shared<CrossEntropy>();
+    net.set_loss_calculator(ce_loss);
     net.set_optimizer(make_shared<SGD>(0.005, 0.9));
 
     net.enable();
 
     Network net2 = net;
     net2.set_batch_size(N_OUTPUTS / 2);
+    net2.enable();
 
-    cout << net << endl;
-    cout << net2 << endl;
+    //Train the networks
+    for (int32_t e = 0; e < N_EPOCHS; e++) {
+        double loss = 0;
+        ce_loss->set_batch_size(0);
+        for (int32_t i = 0; i < N_OUTPUTS; i++) {
+            xarray<double> out = net.forward(inputs[i]);
+            loss += ce_loss->compute(out, expected_outputs[i]);
+            net.backward(out, expected_outputs[i]);
+            net.optimize();
+        }
 
-    finish the test!
+        // if(e % 200 == 0) {
+        //     cout << e << " completed, loss " << loss << endl;
+        // }
+
+        loss = 0;
+        ce_loss->set_batch_size(N_OUTPUTS / 2);
+        for(int32_t i = 0; i < 2; i++) {
+            xarray<double> out_batches = net2.forward(input_batches[i]);
+            loss += ce_loss->compute(out_batches, expected_outputs_batches[i]);
+            net2.backward(out_batches, expected_outputs_batches[i]);
+            net2.optimize();
+        }
+
+        // if(e % 200 == 0) {
+        //     cout << e << " completed, loss " << loss << endl;
+        // }
+    }
+
+    //Check that the element-wise difference is less than 0.5 from its expected
+    for(int32_t i = 0; i < N_OUTPUTS; i++) {
+        xarray<double> out = net.forward(inputs[i]);
+        // cout << out << endl;
+        assert_array_almost_equals(expected_outputs[i], out, 0.5);
+    }
+    for(int32_t i = 0; i < 2; i++) {
+        xarray<double> out = net2.forward(input_batches[i]);
+        // cout << out << endl;
+        assert_array_almost_equals(expected_outputs_batches[i], out, 0.5);
+    }
 }
 
 
 
 
 int main() {
-    // test_linear1d_forward();
-    // test_linear1d_forward_1to1();
-    // test_mse_crossentropy();
-    // test_train_no_batch();
-    // test_train_batch_1();
-    // test_train_batch_2();
-    // test_create_branch();
-    // test_splitter_forward_backward();
-    // test_combiner_forward_backward();
-    // test_train_branch();
-    test_train_bin_to_onehot(4);
+    test_linear1d_forward();
+    test_linear1d_forward_1to1();
+    test_mse_crossentropy();
+    test_train_no_batch();
+    test_train_batch_1();
+    test_train_batch_2();
+    test_create_branch();
+    test_create_branch_splitter_first();
+    test_create_control_flow_only();
+    test_splitter_forward_backward();
+    test_combiner_forward_backward();
+    test_train_branch();
+    test_ce_sm_batch_assign();
     cout << "Tests passed" << endl;
 }

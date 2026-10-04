@@ -40,8 +40,11 @@ protected:
 
         xt::svector<std::size_t> predicted_shape = predicted.shape();
         xt::svector<std::size_t> expected_shape = expected.shape();
+
         str_assert(expected_shape.size() == predicted_shape.size(), "Expected value (" + std::to_string(expected_shape.size()) + ") must have the same rank as predicted (" + std::to_string(predicted_shape.size()) + ")");
-        
+        str_assert(batch_size_ == 0 || ((int32_t)expected_shape[0] == batch_size_ && (int32_t)predicted_shape[0]==batch_size_), 
+            "Predicted batch size of " + std::to_string(predicted_shape[0]) + " and expected batch size of " + std::to_string(expected_shape[0]) + " must match the expected batch size of " + std::to_string(batch_size_));
+
         for(int i = 0; i < predicted_shape.size(); i++) {
             str_assert(predicted_shape[i] == expected_shape[i], "Predicted shape and expected shape mismatch on axis " + std::to_string(i));
         }
@@ -249,8 +252,8 @@ public:
     double compute(xt::xarray<double> predicted, xt::xarray<double> expected) const override {
         assert_nonempty_same_shape_(predicted, expected);
 
-        auto clipped_pred = xt::clip(predicted, epsilon, 1.0 - epsilon);
-        double divisor = (batch_size_ == 0) ? 1.0 : static_cast<double>(batch_size_);
+        auto clipped_pred = xt::clip(predicted, epsilon, 1.0);
+        double divisor = (batch_size_ == 0) ? 1.0 : static_cast<double>(predicted.shape() [0]);
     
         // Mean categorical/binary cross-entropy loss over the batch
         return -xt::sum(expected * xt::log(clipped_pred))() / divisor;
@@ -268,7 +271,7 @@ public:
         assert_nonempty_same_shape_(predicted, expected);
 
         auto clipped_pred = xt::clip(predicted, epsilon, 1.0 - epsilon);
-        double divisor = (batch_size_ == 0) ? 1.0 : static_cast<double>(batch_size_);
+        double divisor = (batch_size_ == 0) ? 1.0 : static_cast<double>(predicted.shape() [0]);
         
         // Derivative of -expected * log(predicted) divided by batch size (or 1 if batch_size_ is 0)
         return (-expected / clipped_pred) / divisor;

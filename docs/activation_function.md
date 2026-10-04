@@ -16,33 +16,33 @@ Abstract class. Subclass of `Operator`.
 
 #### forward
 
-*Signature:* `virtual std::vector<xt::xarray<double>> forward(std::vector<xt::xarray<double>> inputs) = 0`
+*Signature:* `virtual xt::xarray<double> forward(const xt::xarray<double>& input) = 0`
 
-Computes the element-wise activation function applied to each element in `inputs`.
+Computes the element-wise activation function applied to each element in `input`.
 
 **Parameters**
 
-* `inputs` (`std::vector<xt::xarray<double>>`): List of values to compute. Non-empty.
+* `input` (`const xt::xarray<double>&`): List of values to compute. Non-empty.
 
 **Returns**
 
-* `std::vector<xt::xarray<double>>`: Computed activation values for each element of `inputs`.
+* `<xt::xarray<double>`: Computed activation values for each element of `input`.
 
 ---
 
 #### backward
 
-*Signature:* `virtual std::vector<xt::xarray<double>> backward(std::vector<xt::xarray<double>> upstream_gradients) = 0`
+*Signature:* `virtual xt::xarray<double> backward(const xt::xarray<double>& upstream_gradients) = 0`
 
 Computes the derivative of the activation function applied to each parameter of `upstream_gradients`.
 
 **Parameters**
 
-* `upstream_gradients` (`std::vector<xt::xarray<double>>`): List of values to compute. Non-empty.
+* `upstream_gradients` (`const xt::xarray<double>&`): List of values to compute. Non-empty.
 
 **Returns**
 
-* `std::vector<xt::xarray<double>>`: Derivative values for each element of `upstream_gradients`.
+* `xt::xarray<double>`: Derivative values for each element of `upstream_gradients`.
 
 ---
 ---
@@ -82,23 +82,23 @@ Returns the string "relu".
 
 #### forward
 
-*Signature:* `virtual std::vector<xt::xarray<double>> forward(std::vector<xt::xarray<double>> inputs)`
+*Signature:* `xt::xarray<double> forward(const xt::xarray<double>& input)`
 
-Computes the element-wise activation function applied to each parameter in `inputs`.
+Computes the element-wise activation function applied to each parameter in `input`.
 
 **Parameters**
 
-* `inputs` (`std::vector<xt::xarray<double>>`): List of values to compute. Non-empty.
+* `input` (`const xt::xarray<double>&`): List of values to compute. Non-empty.
 
 **Returns**
 
-* `std::vector<xt::xarray<double>>`: Computed activation values for each element of `inputs`.
+* `xt::xarray<double>`: Computed activation values for each element of `input`.
 
 ---
 
 #### backward
 
-*Signature:* `virtual std::vector<xt::xarray<double>> backward(std::vector<xt::xarray<double>> upstream_gradients)`
+*Signature:* `xt::xarray<double> backward(const xt::xarray<double>& upstream_gradients)`
 
 Applies the derivative of ReLU to each parameter of `upstream_gradients`.
 
@@ -108,11 +108,11 @@ At x=0, the ReLU derivative is defined to be 1.
 
 **Parameters**
 
-* `upstream_gradients` (`std::vector<xt::xarray<double>>`): List of values to compute. Non-empty.
+* `upstream_gradients` (`const xt::xarray<double>&`): List of values to compute. Non-empty.
 
 **Returns**
 
-* `std::vector<xt::xarray<double>>`: Derivative values for each element of `upstream_gradients`.
+* `xt::xarray<double>`: Derivative values for each element of `upstream_gradients`.
 
 ---
 ---
@@ -139,16 +139,6 @@ Creates a new Sigmoid object.
 
 ### Getters
 
-#### temperature_coefficient
-
-*Signature:* `double temperature_coefficient() const`
-
-Returns the object's temperature coefficient.
-
-**Returns**
-* `double`: Temperature coefficient.
-
-
 #### to_string
 
 *Signature:* `std::string to_string() const`
@@ -160,57 +150,41 @@ Returns the string "sigmoid".
 
 ---
 
-### Setters
-
-#### set_temperature_coefficient
-
-*Signature:* `void set_temperature_coefficient(double new_temp_coeff)`
-
-Sets the object's temperature coefficient to `new_temp_coeff`.
-
-Higher values make Softmax output elements more similar to each other.
-Individual output tensors don't affect the calculation of other tensors.
-
-**Parameters**
-* `new_temp_coeff` (`double`): Temperature coefficient to set. Positive.
-
----
-
 ### Methods
 
 #### forward
 
-*Signature:* `virtual std::vector<xt::xarray<double>> forward(std::vector<xt::xarray<double>> inputs)`
+*Signature:* `xt::xarray<double> forward(const xt::xarray<double>& input)`
 
-Computes the element-wise activation function applied to each element in `inputs`.
+Computes the element-wise activation function applied to each element in `input`.
 
 Calling this method is required to compute the Sigmoid's `backward` method.
 
 **Parameters**
 
-* `inputs` (`std::vector<xt::xarray<double>>`): List of values to compute. Non-empty.
+* `input` (`const xt::xarray<double>&`): List of values to compute. Non-empty.
 
 **Returns**
 
-* `std::vector<xt::xarray<double>>`: Computed activation values for each element of `inputs`.
+* `xt::xarray<double>`: Computed activation values for each element of `input`.
 
 ---
 
 #### backward
 
-*Signature:* `virtual std::vector<xt::xarray<double>> backward(std::vector<xt::xarray<double>> upstream_gradients)`
+*Signature:* `xt::xarray<double> backward(const xt::xarray<double>& upstream_gradients)`
 
 Computes the derivative of the activation function applied to each element of `upstream_gradients`.
 
-NOTE: The `forward` method must have been called beforehand. To compute properly, the input to this method must be the backwards-pass result from the `forward` method call.
+NOTE: The `forward` method must have been called beforehand. To compute properly, the input to this method must be the output of the `forward` method call.
 
 **Parameters**
 
-* `upstream_gradients` (`std::vector<xt::xarray<double>>`): List of values to compute. Non-empty.
+* `upstream_gradients` (`const xt::xarray<double>&`): List of values to compute. Non-empty.
 
 **Returns**
 
-* `std::vector<xt::xarray<double>>`: Derivative values for each element of `upstream_gradients`.
+* `xt::xarray<double>`: Derivative values for each element of `upstream_gradients`.
 
 ---
 ---
@@ -225,7 +199,7 @@ For each input vector, Softmax generates a probability distribution over all inp
 Prior to calculation, each input is divided by the Softmax object's temperature coefficient.   
 The temperature coefficient increases or decreases the differences between output values. A higher temperature coefficient decreases the difference in input magnitudes, making each output element more uniform.
 
-In the case of multiple tensor inputs, the Softmax calculation is applied only to individual tensors.
+Softmax is for 1D vectors only.
 
 ---
 
@@ -235,7 +209,7 @@ In the case of multiple tensor inputs, the Softmax calculation is applied only t
 
 Creates a new Softmax object.
 
-The temperature of the object is set to `temperature_coefficient`.
+The temperature of the object is set to `temperature_coefficient`.  
 
 **Parameters**
 * `temperature_coefficient` (`double`): Amplification or attenuation factor of differences between outputs. Positive.
@@ -243,6 +217,18 @@ The temperature of the object is set to `temperature_coefficient`.
 ---
 
 ### Getters
+
+#### temperature_coefficient
+
+*Signature:* `double temperature_coefficient() const`
+
+Returns the object's temperature coefficient.
+
+**Returns**
+* `double`: Object's amplification or attenuation factor of differences between outputs.
+
+
+---
 
 #### to_string
 
@@ -255,35 +241,48 @@ Returns the string "softmax".
 
 ---
 
+### Setters
+
+#### set_temperature_coefficient
+
+*Signature:* `void set_temperature_coefficient(double new_temp_coeff)`
+
+Sets the object's temperature coefficient to `new_temp_coeff`.
+
+**Parameters**
+* `new_temp_coeff` (`double`): Temperature coefficient to set. Positive.
+
+---
+
 ### Methods
 
 #### forward
 
-*Signature:* `virtual std::vector<xt::xarray<double>> forward(std::vector<xt::xarray<double>> inputs)`
+*Signature:* `xt::xarray<double> forward(const xt::xarray<double>& input)`
 
-Computes the activation function applied to each element of `inputs`.
+Computes the activation function applied to each element of `input`.
 
 **Parameters**
 
-* `inputs` (`std::vector<xt::xarray<double>>`): List of values to compute. Non-empty.
+* `input` (`const xt::xarray<double>&`): List of values to compute. Non-empty, and has exactly 2 axes.
 
 **Returns**
 
-* `std::vector<xt::xarray<double>>`: Computed activation values for each element of `inputs`.
+* `xt::xarray<double>`: Computed activation values for each element of `input`.
 
 ---
 
 #### backward
 
-*Signature:* `virtual std::vector<xt::xarray<double>> backward(std::vector<xt::xarray<double>> upstream_gradients)`
+*Signature:* `xt::xarray<double> backward(const xt::xarray<double>& upstream_gradients)`
 
 Applies the derivative of Sigmoid to each element of `upstream_gradients`.
 
 
 **Parameters**
 
-* `upstream_gradients` (`std::vector<xt::xarray<double>>`): List of values to compute. Non-empty.
+* `upstream_gradients` (`const xt::xarray<double>&`): List of values to compute. Non-empty, and has exactly 2 axes.
 
 **Returns**
 
-* `std::vector<xt::xarray<double>>`: Derivative values for each element of `upstream_gradients`.
+* `xt::xarray<double>`: Derivative values for each element of `upstream_gradients`.

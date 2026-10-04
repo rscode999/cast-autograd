@@ -11,11 +11,11 @@ Each class documentation page is grouped into these sections:
 - Getters (retrieve the object's data)
 - Setters (change the object's data)
 - Methods (any other functionality that is not a getter or a setter)
-- Operator Overloads (allows use of operators on the object)
+- Operator Overloads (allows using operators on the object)
 
 Any method in a subclass that overrides a superclass method has its own documentation entry. If a superclass' virtual method is not overridden, the method is not listed in the subclass' documentation.
 
-Most objects have a `shared_ptr_deep_copy` method, which clones the object into a new `std::shared_ptr`. The pointer references a separate object and cannot be used to modify the original.
+All concrete classes except for the Network have a `shared_ptr_deep_copy` method, which clones the object into a new `std::shared_ptr`. The pointer references a separate object and cannot be used to modify the original.
 
 ### Format of Documentation Entry
 
@@ -44,9 +44,9 @@ Additional information about the method. Includes more details about what the me
 
 All functionality is under the `cast` namespace.
 
-* [ActivationFunction](activation_function.md)
-* [NetworkComponent](network_component.md)
 * [Network](network.md)
+* [NetworkComponent](network_component.md)
+* [LossCalculator](loss_calculator.md)
 * [Optimizer](optimizer.md)
 * [Output Stream Manipulators](ostream_manip.md)
 
@@ -84,7 +84,7 @@ At this point, the network cannot be used for training and prediction. The netwo
 */
 ```
 
-![new branch creation](new_branch.png)
+![new branch creation: branch 1 splits off from branch 0](new_branch.png)
 
 <br>
 
@@ -99,7 +99,7 @@ Adding a component to branch 1 is no longer possible because branch 1 has ended.
 */
 ```
 
-![branch merging](combined_branch.png)
+![branch merging: branch 1 goes into branch 0 and terminates](combined_branch.png)
 
 <br>
 
@@ -108,7 +108,7 @@ Adding a component to branch 1 is no longer possible because branch 1 has ended.
 net.add_splitter(2, 0); //2-way splitter into branch 0
 ```
 
-![new branch created after a merge](new_branch_post_combine.png)
+![new branch created after a merge: branch 2 splits off from branch 0](new_branch_post_combine.png)
 
 <br>
 

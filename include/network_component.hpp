@@ -124,7 +124,7 @@ public:
 
 
     /**
-    * @return indices to this operator's inputs. Maps: branch ID -> index of predecessor
+    * @return indices to this operator's inputs. Maps: branch ID -> ID of predecessor in a network
     */
     std::unordered_map<int32_t, int32_t> predecessors() const {
         return predecessors_;
@@ -132,7 +132,7 @@ public:
 
 
     /**
-    * @return indices to this operator's outputs. Maps: branch ID -> index of successor
+    * @return indices to this operator's outputs. Maps: branch ID -> ID of successor in a network
     */
     std::unordered_map<int32_t, int32_t> successors() const {
         return successors_;
@@ -156,14 +156,14 @@ public:
      * @param input tensors to compute this operation on
      * @return result of this operator on `inputs`
      */
-    virtual xt::xarray<double> forward(xt::xarray<double> input) = 0;
+    virtual xt::xarray<double> forward(const xt::xarray<double>& input) = 0;
 
     /**
      * Returns the backwards pass of this component on `upstream_gradients`.
      * @param upstream_gradients gradients from the previous operator
      * @return results of the operator's backwards pass on `upstream_gradients`
      */
-    virtual xt::xarray<double> backward(xt::xarray<double> upstream_gradients) = 0;
+    virtual xt::xarray<double> backward(const xt::xarray<double>& upstream_gradients) = 0;
 
 
     //////////////////////////////////////////////////////////////////

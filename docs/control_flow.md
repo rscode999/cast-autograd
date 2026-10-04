@@ -44,63 +44,6 @@ Returns the number of branches after the Splitter's operation, including the Spl
 
 ---
 
-### Methods
-
-#### forward (multiple outputs)
-
-*Signature:* `virtual std::vector<std::vector<xt::xarray<double>>> forward(std::vector<xt::xarray<double>> input, bool tag)`
-
-Returns `input` copied `branch_count()` times.
-
-**Parameters**
-
-* `input` (`std::vector<xt::xarray<double>>`): Vector(s) to copy across multiple outputs. Non-empty.
-* `tag` (`bool`): Unused; required to distinguish this method from the overridden method that returns `std::vector<xt::xarray<double>>`.
-
-**Returns**
-
-* `std::vector<std::vector<xt::xarray<double>>>`: Vector of length `branch_count()`, where each index contains a copy of `input`.
-
----
-
-#### forward (single output)
-
-*Signature:* `std::vector<xt::xarray<double>> forward(std::vector<xt::xarray<double>> unused) override`
-
-DO NOT USE THIS METHOD!
-
-Throws `cast::not_implemented`. The method exists solely to implement a virtual method and should not be used.
-
----
-
-#### compute_backwards_pass
-
-*Signature:* `virtual std::vector<xt::xarray<double>> compute_backwards_pass(std::vector<xt::xarray<double>> successor_gradient) override`
-
-Returns the empty vector. Upon receiving the `branch_count()`-th input, returns the result of the splitter's backpropagation operation computed on all received inputs.
-
-**Parameters**
-
-* `successor_gradient` (`std::vector<xt::xarray<double>>`): Single successor gradient. Size and shape of all its elements match those of the first given input.
-
-**Returns**
-
-* `std::vector<xt::xarray<double>>`: Empty vector, or backprop gradients if all inputs are received.
-
----
-
-#### shared_ptr_deep_copy
-
-*Signature:* `std::shared_ptr<NetworkComponent> shared_ptr_deep_copy() const override`
-
-Returns a deep pointer copy of this Splitter object.
-
-**Returns**
-
-* `std::shared_ptr<NetworkComponent>`: Shared pointer to a deep copy of the Splitter.
-
----
-
 #### to_string
 
 *Signature:* `virtual std::string to_string() const override`
@@ -110,6 +53,51 @@ Returns the string "splitter ({branch count of this splitter object})".
 **Returns**
 
 * `std::string`: String representation of the splitter object.
+
+---
+
+### Methods
+
+#### forward (multiple outputs)
+
+*Signature:* `virtual std::vector<std::vector<xt::xarray<double>>> forward(const xt::xarray<double>& input, bool tag)`
+
+Returns `input` copied `branch_count()` times.
+
+**Parameters**
+
+* `input` (`const xt::xarray<double>&`): Vector(s) to copy across multiple outputs. Non-empty.
+* `tag` (`bool`): Unused; required to distinguish this method from the overridden method that returns `xt::xarray<double>`.
+
+**Returns**
+
+* `std::vector<xt::xarray<double>>`: Vector of length `branch_count()`, where each index contains a copy of `input`.
+
+---
+
+#### forward (single output- DO NOT USE)
+
+*Signature:* `xt::xarray<double> forward(const xt::xarray<double>& unused) override`
+
+DO NOT USE THIS METHOD!
+
+Throws `cast::not_implemented`. The method exists solely to implement a virtual method and should not be used.
+
+---
+
+#### backward
+
+*Signature:* `xt::xarray<double> backward(const xt::xarray<double>& successor_gradient) override`
+
+Returns the empty tensor. Upon receiving the `branch_count()`-th input, returns the result of the splitter's backpropagation operation computed on all received inputs.
+
+**Parameters**
+
+* `successor_gradient` (`xt::xarray<double>`): Single successor gradient. Size and shape of all its elements match those of the first given input received after this method returns a non-empty tensor.
+
+**Returns**
+
+* `xt::xarray<double>`: Empty tensor, or backprop gradients if all inputs are received.
 
 
 ---
@@ -152,17 +140,29 @@ Returns a list of branch IDs that this combiner merges, not including the combin
 
 ---
 
+#### to_string
+
+*Signature:* `std::string to_string() const override`
+
+Returns the string "combiner ({branch indices combined} -> {branch of combiner})".
+
+**Returns**
+
+* `std::string`: String representation of the Combiner.
+
+---
+
 ### Methods
 
 #### forward
 
-*Signature:* `std::vector<xt::xarray<double>> forward(std::vector<xt::xarray<double>> predecessor_outputs) override`
+*Signature:* `xt::xarray<double>forward(const xt::xarray<double>& predecessor_outputs) override`
 
 Returns the empty vector. Upon receiving the `branch_indices().size()`-th input, returns the element-wise sum of all inputs given.
 
 **Parameters**
 
-* `predecessor_outputs` (`std::vector<xt::xarray<double>>`): List of layer outputs. Has length >= 1, and each element has the same size and matching corresponding shapes as the first input given.
+* `predecessor_outputs` (`const xt::xarray<double>&`): List of layer outputs. Has the same size and matching corresponding shapes as the first input given
 
 **Returns**
 
@@ -174,39 +174,29 @@ Returns the empty vector. Upon receiving the `branch_indices().size()`-th input,
 
 ---
 
-#### backward
+#### backward (multiple outputs)
 
-*Signature:* `virtual std::vector<std::vector<xt::xarray<double>>> backward(std::vector<xt::xarray<double>> prev_gradient, bool tag)`
+*Signature:* `virtual std::vector<xt::xarray<double>> backward(const xt::xarray<double>& prev_gradient, bool tag)`
 
 Returns `prev_gradient` copied `branch_indices().size()` times.
 
 **Parameters**
 
-* `prev_gradient` (`std::vector<xt::xarray<double>>`): Tensor(s) to copy across multiple outputs. Non-empty.
-* `tag` (`bool`): Unused; required to distinguish this method from the overridden method that returns `std::vector<xt::xarray<double>>`.
+* `prev_gradient` (`const xt::xarray<double>&`): Tensor(s) to copy across multiple outputs. Non-empty.
+* `tag` (`bool`): Unused; required to distinguish this method from the overridden method that returns `xt::xarray<double>`.
 
 **Returns**
 
-* `std::vector<std::vector<xt::xarray<double>>>`: Vector of length `branch_indices().size()`, where each index contains a copy of `prev_gradient`.
+* `std::vector<xt::xarray<double>>`: Vector of length `branch_indices().size()`, where each index contains a copy of `prev_gradient`.
 
 ---
 
-#### backward
+#### backward (single output- DO NOT USE)
 
-*Signature:* `std::vector<xt::xarray<double>> backward(std::vector<xt::xarray<double>> unused) override`
+*Signature:* `xt::xarray<double> backward(const xt::xarray<double>& unused) override`
 
 DO NOT USE THIS METHOD!
 
 Throws `cast::not_implemented`. The method exists solely to implement a virtual method and should not be used.
 
 ---
-
-#### to_string
-
-*Signature:* `std::string to_string() const override`
-
-Returns the string "combiner ({branch indices combined} -> {branch of combiner})".
-
-**Returns**
-
-* `std::string`: String representation of the Combiner.

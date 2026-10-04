@@ -8,6 +8,22 @@ Improves the weights of a network's layers.
 ---
 ---
 
+## Shared Pointer Cloning 
+
+#### shared_ptr_deep_copy
+
+*Signature:* `virtual std::shared_ptr shared_ptr_deep_copy() const = 0`
+
+Returns a deep copy of the optimizer's pointer.
+
+The new pointer cannot be used to modify the original.
+
+**Returns**
+
+* `std::shared_ptr<Optimizer>`: Deep pointer copy of the optimizer.
+
+---
+
 ## Shared Virtual Methods
 
 ### Getters
@@ -18,7 +34,7 @@ Improves the weights of a network's layers.
 
 Returns the optimizer's hyperparameters.
 
-The meaning of each index depends on the specific Optimizer subclass.
+The meaning of each index in the return value depends on the specific Optimizer subclass.
 
 **Returns**
 
@@ -26,7 +42,29 @@ The meaning of each index depends on the specific Optimizer subclass.
 
 ---
 
+#### to_string
+
+*Signature:* `virtual std::string to_string() const`
+
+Returns a string representation of the optimizer object and its hyperparameters.
+
+**Returns**
+
+* `std::string`: String representation of the optimizer.
+
+---
+
 ### Setters
+
+#### clear_training_state
+
+*Signature:* `void clear_training_state() = 0`
+
+Removes the network components under optimization, as well as any data used for training.
+
+To restore the network components and data, use the `initialize` method.
+
+---
 
 #### set_hyperparameters
 
@@ -56,20 +94,6 @@ Loads the optimizer with all information needed for training.
 
 ---
 
-#### shared_ptr_deep_copy
-
-*Signature:* `virtual std::shared_ptr shared_ptr_deep_copy() const = 0`
-
-Returns a deep copy of the optimizer's pointer.
-
-The new pointer cannot be used to modify the original.
-
-**Returns**
-
-* `std::shared_ptr<Optimizer>`: Deep pointer copy of the optimizer.
-
----
-
 #### step
 
 *Signature:* `virtual void step(bool zero_grad) = 0`
@@ -83,18 +107,6 @@ Any component that is not a subclass of `Layer` is unchanged.
 **Parameters**
 
 * `zero_grad` (`bool`): Whether to set each operator's gradients to 0 after computing the optimization pass
-
----
-
-#### to_string
-
-*Signature:* `virtual std::string to_string() const`
-
-Returns a string representation of the optimizer object and its hyperparameters.
-
-**Returns**
-
-* `std::string`: String representation of the optimizer.
 
 ---
 
@@ -128,7 +140,9 @@ Works for output streams of any type, including `std::wcout`, the wide-character
 
 ## SGD
 
-Stochastic Gradient Descent optimizer with momentum
+Stochastic Gradient Descent optimizer with momentum.
+
+---
 
 ### Constructor
 
@@ -169,7 +183,28 @@ Returns the momentum coefficient used by this optimizer.
 
 ---
 
+#### to_string
+
+*Signature:* `std::string to_string() const override`
+
+Returns the string "sgd (learning rate {learning rate}, momentum coefficient {momentum coefficient})".
+
+Example: "sgd (learning rate 0.05, momentum coefficient 0.9)"
+
+**Returns**
+* `std::string`: String representation of the SGD optimizer.
+
+---
+
 ### Setters
+
+#### clear_training_state
+
+*Signature:* `void clear_training_state()`
+
+Removes all network components under optimization, as well as resetting layer velocities.
+
+---
 
 #### set_hyperparameters
 
@@ -211,7 +246,7 @@ Sets this SGD optimizer's momentum coefficient to `new_momentum_coeff`.
 
 #### initialize
 
-*Signature:* `void initialize(std::vector<std::shared_ptr>& components) override`
+*Signature:* `void initialize(std::vector<std::shared_ptr<NetworkComponent>>& components) override`
 
 Loads the SGD optimizer with layer velocities taken from `components`.
 
@@ -225,24 +260,14 @@ Loads the SGD optimizer with layer velocities taken from `components`.
 
 *Signature:* `void step(bool zero_grad = true) override`
 
-Updates `operators` using SGD.
+Updates the optimizer's components using SGD.
 
-Any non-layer (i.e. operators that are not subclasses of `Layer`) are ignored.
+Any non-layer (i.e. components that are not subclasses of `Layer`) are ignored.
 
-This method must be called after using `initialize`. The operators cannot have been modified since calling `initialize`.
+This method must be called after using `initialize`. The components cannot have been modified since calling `initialize`.
 
 **Parameters**
 
 * `zero_grad` (`bool`): Whether to set each operator's gradients to 0, after computing the optimization pass.
 
 ---
-
-#### to_string
-
-*Signature:* `std::string to_string() const override`
-
-Returns the string "sgd (learning rate {learning rate}, momentum coefficient {momentum coefficient})".
-
-**Returns**
-
-* `std::string`: String representation of the SGD optimizer.

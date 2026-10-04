@@ -12,9 +12,55 @@ namespace cast {
 
 
 /**
-* Thrown when a branch ID is requested, but the branch ID is not properly assigned
-*/
-class unassigned_branch_error : public std::exception {
+ * Thrown to indicate that a precondition is violated.
+ * 
+ * Inherits from `std::exception`. Enables a dynamically generated `std::string` to be used in an error message.
+ */
+class assertion_error : public std::exception {
+private:
+    /**
+     * Error message set by the user
+     */
+    std::string full_error_message_;
+
+public:
+    /**
+     * Creates a new exception object, thrown at the location `throw_location`.
+     *
+     * The error message is: file of `throw_location` + line number of `throw_location`
+     * @param throw_location place where the exception was thrown
+     */
+    explicit assertion_error(std::source_location throw_location = std::source_location::current()) : std::exception() {
+        full_error_message_ = "file " + std::string(throw_location.file_name()) + ", line " + std::to_string(throw_location.line());
+    }
+
+    /**
+     * Creates a new exception object with the message `error_message`, thrown at the location `throw_location`.
+     *
+     * The error message is: `error_message` + (file of `throw_location` + line number of `throw_location`)
+     * @param error_message message to be displayed on throw
+     * @param throw_location place where the exception was thrown
+     */
+    explicit assertion_error(std::string error_message, std::source_location throw_location = std::source_location::current()) : std::exception() {
+        full_error_message_ = error_message + " (file " + throw_location.file_name() + ", line " + std::to_string(throw_location.line()) + ", in " + throw_location.function_name() + ")";
+    }
+
+    /**
+     * @return the exception object's error message
+     */
+    const char* what() const noexcept override {
+        return full_error_message_.c_str();
+    }   
+};
+
+
+
+/**
+ * Thrown to indicate that a network component was not added to the network properly.
+ * 
+ * Inherits from `std::exception`
+ */
+class bad_component_addition : public std::exception {
 private:
     /**
      * Error message set by the user
@@ -29,7 +75,7 @@ public:
      * @param error_message message to be displayed on throw
      * @param throw_location place where the exception was thrown
      */
-    explicit unassigned_branch_error(std::string error_message = "", std::source_location throw_location = std::source_location::current()) : std::exception() {
+    explicit bad_component_addition(std::string error_message = "", std::source_location throw_location = std::source_location::current()) : std::exception() {
         message_ = error_message + " (file " + throw_location.file_name() + ", line " + std::to_string(throw_location.line()) + ", in " + throw_location.function_name() + ")";
     }
 
@@ -40,9 +86,9 @@ public:
         return message_.c_str();
     }
 };
-
-
     
+
+
 /**
  * Thrown to indicate that a network is not in the correct configuration for an action.
  * 
@@ -109,6 +155,25 @@ public:
 };
 
 
+
+/**
+ * Thrown to indicate that a method is incomplete, and thus should not be used.
+ * 
+ * Inherits from `std::logic_error`
+ */
+class not_implemented : public std::logic_error {
+
+public:
+    /**
+     * Creates a new exception object with the message `msg`
+     * @param msg error message to be displayed on throw
+     */
+    explicit not_implemented(std::string msg = "") : std::logic_error(msg) {
+    }
+};
+
+
+
 /**
  * Thrown to indicate that a network has dimension incompatibilities.
  * 
@@ -142,12 +207,11 @@ public:
 };
 
 
+
 /**
- * Thrown to indicate that a network component was not added to the network properly.
- * 
- * Inherits from `std::exception`
- */
-class bad_component_addition : public std::exception {
+* Thrown when a branch ID is requested, but the branch ID is not properly assigned
+*/
+class unassigned_branch_error : public std::exception {
 private:
     /**
      * Error message set by the user
@@ -162,7 +226,7 @@ public:
      * @param error_message message to be displayed on throw
      * @param throw_location place where the exception was thrown
      */
-    explicit bad_component_addition(std::string error_message = "", std::source_location throw_location = std::source_location::current()) : std::exception() {
+    explicit unassigned_branch_error(std::string error_message = "", std::source_location throw_location = std::source_location::current()) : std::exception() {
         message_ = error_message + " (file " + throw_location.file_name() + ", line " + std::to_string(throw_location.line()) + ", in " + throw_location.function_name() + ")";
     }
 
@@ -176,64 +240,6 @@ public:
 
 
 
-/**
- * Thrown to indicate that a method is incomplete, and thus should not be used.
- * 
- * Inherits from `std::logic_error`
- */
-class not_implemented : public std::logic_error {
-
-public:
-    /**
-     * Creates a new exception object with the message `msg`
-     * @param msg error message to be displayed on throw
-     */
-    explicit not_implemented(std::string msg = "") : std::logic_error(msg) {
-    }
-};
-
-
-/**
- * Thrown to indicate that a precondition is violated.
- * 
- * Inherits from `std::exception`. Enables a dynamically generated `std::string` to be used in an error message.
- */
-class assertion_error : public std::exception {
-private:
-    /**
-     * Error message set by the user
-     */
-    std::string full_error_message_;
-
-public:
-    /**
-     * Creates a new exception object, thrown at the location `throw_location`.
-     *
-     * The error message is: file of `throw_location` + line number of `throw_location`
-     * @param throw_location place where the exception was thrown
-     */
-    explicit assertion_error(std::source_location throw_location = std::source_location::current()) : std::exception() {
-        full_error_message_ = "file " + std::string(throw_location.file_name()) + ", line " + std::to_string(throw_location.line());
-    }
-
-    /**
-     * Creates a new exception object with the message `error_message`, thrown at the location `throw_location`.
-     *
-     * The error message is: `error_message` + (file of `throw_location` + line number of `throw_location`)
-     * @param error_message message to be displayed on throw
-     * @param throw_location place where the exception was thrown
-     */
-    explicit assertion_error(std::string error_message, std::source_location throw_location = std::source_location::current()) : std::exception() {
-        full_error_message_ = error_message + " (file " + throw_location.file_name() + ", line " + std::to_string(throw_location.line()) + ", in " + throw_location.function_name() + ")";
-    }
-
-    /**
-     * @return the exception object's error message
-     */
-    const char* what() const noexcept override {
-        return full_error_message_.c_str();
-    }   
-};
 
 
 

@@ -80,7 +80,7 @@ public:
     * @param tag unused; required to distinguish this method from the overridden method that returns `std::vector<xt::xarray<double>>`
     * @return vector of length `branch_count()`, where each index contains a copy of `input`
     */
-    virtual std::vector<xt::xarray<double>> forward(xt::xarray<double> input, bool tag) {
+    virtual std::vector<xt::xarray<double>> forward(const xt::xarray<double>& input, bool tag) {
         str_assert(input.size() >= 1, "The input must be non-empty");
 
         std::vector<xt::xarray<double>> out;
@@ -100,7 +100,7 @@ public:
     * @param successor_gradient single successor gradient. Size and shape of all its elements match those of the first given input
     * @return empty vector, or backprop gradients (if all inputs are received)
     */
-    virtual xt::xarray<double> backward(xt::xarray<double> successor_gradient) override {
+    virtual xt::xarray<double> backward(const xt::xarray<double>& successor_gradient) override {
         // Perform shape and size assertions if this is not the first input
         if (!successor_outputs_.empty()) {
             const auto& first_input = successor_outputs_[0];
@@ -138,7 +138,7 @@ public:
     /**
     * DO NOT USE! Throws `cast::not_implemented`. The method exists solely to implement a virtual method.
     */
-    xt::xarray<double> forward(xt::xarray<double> unused) override {
+    xt::xarray<double> forward(const xt::xarray<double>& unused) override {
         throw not_implemented("Splitter forward method using only a xarray<double> does not exist");
     }
 };
@@ -245,7 +245,7 @@ public:
     * @param predecessor_output layer outputs. Has the same size and matching corresponding shapes as the first input given
     * @return sum of all inputs, or an empty tensor if not all branches are combined
     */
-    xt::xarray<double> forward(xt::xarray<double> predecessor_output) override {
+    xt::xarray<double> forward(const xt::xarray<double>& predecessor_output) override {
         str_assert(predecessor_output.size() > 0, "Combiner requires at least 1 input");
         assert_no_self_assign_();
 
@@ -276,7 +276,7 @@ public:
     * @param tag unused; required to distinguish this method from the overridden method that returns `xt::xarray<double>`
     * @return vector of length `branch_indices().size()`, where each index contains a copy of `prev_gradient`
     */
-    virtual std::vector<xt::xarray<double>> backward(xt::xarray<double> prev_gradient, bool tag) {
+    virtual std::vector<xt::xarray<double>> backward(const xt::xarray<double>& prev_gradient, bool tag) {
         str_assert(prev_gradient.size() > 0, "Combiner backwards pass requires at least 1 element in the input gradient");
         assert_no_self_assign_();
 
@@ -298,7 +298,7 @@ public:
     /**
     * DO NOT USE! Throws `cast::not_implemented`. The method exists solely to implement a virtual method.
     */
-    xt::xarray<double> backward(xt::xarray<double> unused) override {
+    xt::xarray<double> backward(const xt::xarray<double>& unused) override {
         throw not_implemented("Combiner backward method using only a xarray<double> does not exist");
     }
 

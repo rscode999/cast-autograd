@@ -45,6 +45,18 @@ protected:
      */
     xt::xarray<double> prev_inputs_;
 
+    /**
+    * If `condition` is false, throws a `shape_error` with error message `error_message` at the location `loc`.
+    * @param condition condition to check
+    * @param error_message message to display on assertion failure
+    * @param loc location of assertion- for debugging
+    */
+    void shape_str_assert_(bool condition, const std::string& error_message, std::source_location loc = std::source_location::current()) {
+        if(!condition) {
+            throw shape_error(error_message, loc);
+        }
+    }
+
 public:
 
     /**
@@ -115,6 +127,7 @@ private:
         #endif
     }
 
+
 public:
     /**
      * Names of indices: Weights=0, Biases=1
@@ -182,13 +195,14 @@ public:
     /**
      * Returns the result of the linear forward pass on `input`.
      *
-     * If `input`'s single value is not a vector of this layer's input dimension, throws `cast::shape_error`.
+     * If `input` is not of dimension 2, or the values in `input` on axis 1 are not of this layer's input dimension, throws `cast::shape_error`.
      * @param input list containing the layer input. Has multiple axes
      * @return forward pass result
      */
-    xt::xarray<double> forward(xt::xarray<double> input) override {
-        str_assert(input.shape().size() > 1, "Input must have multiple axes (axis 0 is for batches)");
+    xt::xarray<double> forward(const xt::xarray<double>& input) override {
         assert_parameter_list_preconditions_();
+        shape_str_assert_(input.shape().size() == 2, "Input must have 2 axes");
+        shape_str_assert_(input.shape() [1] == input_vector_dimension_, "Input vectors (length " + std::to_string(input.shape() [1]) + ") must have length " + std::to_string(input_vector_dimension_));
 
         prev_inputs_ = input;
         return xt::linalg::dot(input, xt::transpose(parameters_[Weights])) + parameters_[Biases];
@@ -198,13 +212,16 @@ public:
 
     /**
      * Returns the gradients with respect to this layer and `upstream_gradients`, updating this layer's gradients.
+     *
+     * If `upstream_gradients` is not of dimension 2, or axis 1 of `upstream_gradients` is not of this layer's output dimension, 
+     * throws `cast::shape_error`.
      * @param upstream_gradients gradients from this layer's successor
      * @return dY/dL, where Y is the overall derivative and L is this layer's data, contained in index 0 of the output
      */
-    xt::xarray<double> backward(xt::xarray<double> upstream_gradients) override {
-        // std::cout << upstream_gradients << std::endl;
-        str_assert(upstream_gradients.shape().size() > 1, "Input must have multiple axes (axis 0 is for batches)");
+    xt::xarray<double> backward(const xt::xarray<double>& upstream_gradients) override {
         assert_parameter_list_preconditions_();
+        shape_str_assert_(upstream_gradients.shape().size() == 2, "Upstream gradients must have 2 axes");
+        shape_str_assert_(upstream_gradients.shape() [1] == output_vector_dimension_, "Upstream gradient vectors (length " + std::to_string(upstream_gradients.shape() [1]) + ") must have length " + std::to_string(output_vector_dimension_));
 
         auto d_input = xt::linalg::dot(upstream_gradients, parameters_[Weights]); 
         gradients_[Weights] = xt::linalg::dot(xt::transpose(upstream_gradients), prev_inputs_); 
