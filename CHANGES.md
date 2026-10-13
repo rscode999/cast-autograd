@@ -1,5 +1,13 @@
 # Change Log
 
+## 0.11.1
+*In Progress*
+
+- Added more performant operations
+    - Activation functions use XTensor lazy evaluation through `xt::noalias`
+    - Optimizer stores only layers, avoiding `std::dynamic_pointer_cast` in calls to `optimize`
+    - `Optimizer::step` zero-grad updates occur in place, instead of creating a new array on every zero-grad
+
 ## 0.11.0
 *4 October 2026*
 

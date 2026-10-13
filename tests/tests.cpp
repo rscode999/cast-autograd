@@ -7,7 +7,9 @@
 #include <immintrin.h>
 #include <memory>
 #include <unordered_map>
+
 #include <xtensor/containers/xarray.hpp>
+#include <xtensor/misc/xsort.hpp>
 
 using namespace cast;
 using namespace cunit;
@@ -827,6 +829,91 @@ void test_ce_sm_batch_assign() {
 
 
 
+void speed_test() {
+    using std::chrono::steady_clock;
+    const int32_t N_INPUTS = 5; //Arbitary positive constant
+    const int32_t N_OUTPUTS = round(pow(2, N_INPUTS)); //Equals 2^N_INPUTS
+    const int32_t N_EPOCHS = 2000; //Positive constant
+
+    //Make the dataset
+    vector<xarray<double>> inputs;
+    vector<xarray<double>> expected_outputs;
+
+    for (int i = 0; i < N_OUTPUTS; i++) {
+        xarray<double> input = xt::zeros<double>({N_INPUTS});
+        xarray<double> output = xt::zeros<double>({N_OUTPUTS});
+
+        //Inputs to binary value
+        for (int j = 0; j < N_INPUTS; j++) {
+            input(j) = (i >> j) & 1;
+        }
+
+        //Output[i] to 1
+        output(i) = 1.0;
+
+        inputs.emplace_back(input);
+        expected_outputs.emplace_back(output);
+    }
+
+    //Train for 10 trials
+    double average_runtime = 0;
+    for(int32_t t = 0; t < 10; t++) {
+        Network net;
+
+        /*
+        Optimizer: SGD 0.005 0.9
+        Loss: Cross entropy
+        Architecture: linear1d N_INPUTS-20 -> ReLU -> linear1d 20-40 -> ReLU -> linear1d 40-N_OUTPUTS -> softmax
+        */
+
+        net.set_loss_calculator(make_shared<CrossEntropy>());
+        net.set_optimizer(make_shared<SGD>(0.005, 0.9));
+
+        net.add_operator(make_shared<Linear1d>(N_INPUTS, 20));
+        net.add_operator(make_shared<ReLU>());
+        net.add_operator(make_shared<Linear1d>(20, 40));
+        net.add_operator(make_shared<ReLU>());
+        net.add_operator(make_shared<Linear1d>(40, N_OUTPUTS));
+        net.add_operator(make_shared<Softmax>());
+
+        net.enable();
+
+        steady_clock::time_point start = steady_clock::now();
+        //Train
+        for(int32_t e = 0; e < N_EPOCHS; e++) {
+            for(int32_t i = 0; i < N_OUTPUTS; i++) {
+                xarray<double> out = net.forward(inputs[i]);
+                net.backward(out, expected_outputs[i]);
+                net.optimize();
+            }
+
+            // if(e % 50 == 0) {
+            //     std::cout << e << std::endl;
+            // }
+        }
+        steady_clock::time_point end = steady_clock::now();
+
+        // //evaluate
+        // for (int i = 0; i < (int32_t)inputs.size(); i++) {
+        //     xarray<double> out = net.forward(inputs[i]);
+        //     int max_idx = xt::argmax(out) [0];
+        //     if(max_idx != i) {
+        //         throw runtime_error("Max index " + to_string(max_idx) + " is not " + to_string(i));
+        //     }
+        //     if(out[max_idx] < 0.5) {
+        //         throw runtime_error("Max value " + to_string(out[max_idx]) + " is less than 0.5");
+        //     }
+        // }
+
+        //record time
+        double elapsed = (double)chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+        //recalculate moving average
+        average_runtime = (average_runtime * ((double)t) + elapsed) / ((double)t+1);
+        cout << "Runtime over " << (t+1) << " trials: " << (int)average_runtime << "ms" << endl;
+    }
+}
+
+
 
 int main() {
     test_linear1d_forward();
@@ -842,5 +929,6 @@ int main() {
     test_combiner_forward_backward();
     test_train_branch();
     test_ce_sm_batch_assign();
+    // speed_test();
     cout << "Tests passed" << endl;
 }

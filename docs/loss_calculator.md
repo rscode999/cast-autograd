@@ -52,14 +52,14 @@ Setting the batch size to 0 makes the calculator not use batches.
 
 #### compute
 
-*Signature:* `virtual double compute(xt::xarray predicted, xt::xarray expected) const = 0`
+*Signature:* `virtual double compute(const xt::xarray<double>& predicted, const xt::xarray<double>& expected) const = 0`
 
 Returns the loss between `predicted` and `expected`, as computed by this calculator.
 
 **Parameters**
 
-* `predicted` (`xt::xarray<double>`): Network's predictions for a given input.
-* `expected` (`xt::xarray<double>`): What the network should have predicted for the input.
+* `predicted` (`const xt::xarray<double>&`): Network's predictions for a given input.
+* `expected` (`const xt::xarray<double>&`): What the network should have predicted for the input.
 
 **Returns**
 
@@ -69,14 +69,14 @@ Returns the loss between `predicted` and `expected`, as computed by this calcula
 
 #### compute_gradient
 
-*Signature:* `virtual xt::xarray compute_gradient(xt::xarray predicted, xt::xarray expected) const = 0`
+*Signature:* `virtual xt::xarray compute_gradient(const xt::xarray<double>& predicted, const xt::xarray<double>& expected) const = 0`
 
 Returns the tensor-valued gradient of the loss, between `predicted` and `expected`, as computed by this calculator.
 
 **Parameters**
 
-* `predicted` (`xt::xarray<double>`): Network's predictions for a given input.
-* `expected` (`xt::xarray<double>`): What the network should have predicted for the input.
+* `predicted` (`const xt::xarray<double>&`): Network's predictions for a given input.
+* `expected` (`const xt::xarray<double>&`): What the network should have predicted for the input.
 
 **Returns**
 
@@ -163,14 +163,14 @@ Returns the string "cross_entropy".
 
 #### compute
 
-*Signature:* `double compute(xt::xarray predicted, xt::xarray expected) const override`
+*Signature:* `double compute(const xt::xarray<double>& predicted, const xt::xarray<double>& expected) const override`
 
 Returns the computed cross-entropy loss between `predicted` and `expected`.
 
 **Parameters**
 
-* `predicted` (`xt::xarray<double>`): Model's predictions for a given input. Non-empty.
-* `expected` (`xt::xarray<double>`): What the model should have predicted for a given input. Has the same shape as `predicted`.
+* `predicted` (`const xt::xarray<double>&`): Model's predictions for a given input. Non-empty.
+* `expected` (`const xt::xarray<double>&`): What the model should have predicted for a given input. Has the same shape as `predicted`.
 
 **Returns**
 
@@ -180,14 +180,14 @@ Returns the computed cross-entropy loss between `predicted` and `expected`.
 
 #### compute_gradient
 
-*Signature:* `xt::xarray compute_gradient(xt::xarray predicted, xt::xarray expected) const override`
+*Signature:* `xt::xarray compute_gradient(const xt::xarray<double>& predicted, const xt::xarray<double>& expected) const override`
 
 Returns the gradient of cross-entropy loss between `predicted` and `expected`.
 
 **Parameters**
 
-* `predicted` (`xt::xarray<double>`): Model's predictions for a given input. Non-empty.
-* `expected` (`xt::xarray<double>`): What the model should have predicted for a given input. Has the same number of elements as `predicted`.
+* `predicted` (`const xt::xarray<double>&`): Model's predictions for a given input. Non-empty.
+* `expected` (`const xt::xarray<double>&`): What the model should have predicted for a given input. Has the same number of elements as `predicted`.
 
 **Returns**
 
@@ -226,7 +226,7 @@ Returns the string "mean_squared_error".
 
 #### compute
 
-*Signature:* `double compute(xt::xarray predicted, xt::xarray expected) const override`
+*Signature:* `double compute(const xt::xarray<double>& predicted, const xt::xarray<double>& expected) const override`
 
 Returns the computed Mean Squared Error loss between `predicted` and `expected`.
 
@@ -234,8 +234,8 @@ For each element in the output, MSE subtracts corresponding elements of the pred
 
 **Parameters**
 
-* `predicted` (`xt::xarray<double>`): Model's predictions for a given input. Non-empty.
-* `expected` (`xt::xarray<double>`): What the model should have predicted for a given input. Has the same shape as `predicted`.
+* `predicted` (`const xt::xarray<double>&`): Model's predictions for a given input. Non-empty.
+* `expected` (`const xt::xarray<double>&`): What the model should have predicted for a given input. Has the same shape as `predicted`.
 
 **Returns**
 
@@ -245,7 +245,7 @@ For each element in the output, MSE subtracts corresponding elements of the pred
 
 #### compute_gradient
 
-*Signature:* `xt::xarray compute_gradient(xt::xarray predicted, xt::xarray expected) const override`
+*Signature:* `xt::xarray compute_gradient(const xt::xarray<double>& predicted, const xt::xarray<double>& expected) const override`
 
 Returns the gradient of MSE loss between `predicted` and `expected`.
 
@@ -253,8 +253,8 @@ Computes the gradient data by taking the difference between predicted and expect
 
 **Parameters**
 
-* `predicted` (`xt::xarray<double>`): Model's predictions for a given input. Non-empty.
-* `expected` (`xt::xarray<double>`): What the model should have predicted for a given input. Has the same number of elements as `predicted`.
+* `predicted` (`const xt::xarray<double>&`): Model's predictions for a given input. Non-empty.
+* `expected` (`const xt::xarray<double>&`): What the model should have predicted for a given input. Has the same number of elements as `predicted`.
 
 **Returns**
 

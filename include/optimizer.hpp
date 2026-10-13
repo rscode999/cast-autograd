@@ -24,9 +24,11 @@ namespace cast {
 class Optimizer {
 protected:
     /**
-    * Network components that this optimizer improves
+    * Layers that this optimizer improves.
+    *
+    * Note: Only subclasses of `Layer` have trainable weights.
     */
-    std::vector<std::shared_ptr<NetworkComponent>> components_;
+    std::vector<std::shared_ptr<Layer>> layers_;
 
     /**
     * Stores hyperparameters of the optimizer
@@ -74,9 +76,9 @@ public:
 
     /**
     * Loads the optimizer with all information needed for training.
-    * @param operators network components to optimize
+    * @param components network components to optimize
     */
-    virtual void initialize(std::vector<std::shared_ptr<NetworkComponent>>& operators) = 0;
+    virtual void initialize(std::vector<std::shared_ptr<NetworkComponent>>& components) = 0;
 
     /**
     * Updates the parameters of each Layer object in the optimizer's stored components using each layer's stored gradients.
@@ -139,7 +141,7 @@ public:
 
 
     /**
-    * Creates a new SGD optimizer with initial learning rate `initial_lr`
+    * Creates a new SGD optimizer with initial learning rate `initial_lr` and momentum coefficient `initial_momentum_coeff`
     * @param initial_lr initial learning rate to use. Positive
     * @param initial_momentum_coeff initial momentum coefficient to use. Non-negative
     */
@@ -195,7 +197,7 @@ public:
     * Removes the components of this optimizer and layer velocities used in training.
     */
     void clear_training_state() override {
-        components_.clear();
+        layers_.clear();
         velocities_.clear();
     }
 
@@ -248,24 +250,23 @@ public:
 
         velocities_.clear(); // Clear out any old state if re-initializing
 
-        components_ = components;
-
-        for (const std::shared_ptr<NetworkComponent>& op : components) {
+        for (const std::shared_ptr<NetworkComponent>& comp : components) {
             std::vector<xt::xarray<double>> layer_vels;
 
-            str_assert(op != nullptr, "All operators in initialization cannot be nullptr");
+            str_assert(comp != nullptr, "All operators in initialization cannot be nullptr");
 
             // Check if this operator is a subclass of Layer
-            std::shared_ptr<Layer> layer = std::dynamic_pointer_cast<Layer>(op);
+            std::shared_ptr<Layer> layer = std::dynamic_pointer_cast<Layer>(comp);
             
-            // It is a layer: initialize velocities for its parameters
+            // It is a layer: Initialize it
             if (layer != nullptr) {
+                layers_.push_back(layer);
+
                 for (const xt::xarray<double>& param : layer->parameters()) {
                     layer_vels.push_back(xt::zeros_like(param));
                 }
+                velocities_.push_back(layer_vels);
             }
-
-            velocities_.push_back(layer_vels);
         }
     }
 
@@ -280,29 +281,27 @@ public:
     void step(bool zero_grad = true) override {
         str_assert(velocities_.size() > 0, "The optimizer must have been initialized prior to calling this method");
 
-        for (int32_t l = 0; l < (int32_t)components_.size(); l++) {
-            // Check if this operator is a subclass of Layer. If not, skip it
-            auto current_layer = std::dynamic_pointer_cast<Layer>(components_[l]);
-            if(current_layer == nullptr) {
-                continue;
-            }
+        const double learning_rate = hyperparams_[LearningRate];
+        const double momentum_coeff = hyperparams_[MomentumCoefficient];
 
-            std::vector<xt::xarray<double>>& params = current_layer->parameters();
-            std::vector<xt::xarray<double>>& grads = current_layer->gradients();
+        for (int32_t l = 0; l < (int32_t)layers_.size(); l++) {
+
+            std::vector<xt::xarray<double>>& params = layers_[l]->parameters();
+            std::vector<xt::xarray<double>>& grads = layers_[l]->gradients();
             std::vector<xt::xarray<double>>& vels = velocities_[l];
 
             // Do SGD update on each of the layer's parameters
-            for(int32_t i = 0; i < current_layer->parameters().size(); i++) {
+            for(int32_t i = 0; i < layers_[l]->parameters().size(); i++) {
 
                 //v = momentum * v + learning_rate * gradient
-                vels[i] = hyperparams_[MomentumCoefficient] * vels[i] + hyperparams_[LearningRate] * grads[i];
+                vels[i] = momentum_coeff * vels[i] + learning_rate * grads[i];
 
                 //param = param - v
                 params[i] -= vels[i];
                 
                 //set gradients to 0
                 if(zero_grad) {
-                    current_layer->gradients() [i] = xt::zeros_like(current_layer->gradients() [i]);
+                    grads[i].fill(0.0);
                 }
             }
         }

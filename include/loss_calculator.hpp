@@ -33,7 +33,7 @@ protected:
     * @param predicted predictions for a given input
     * @param expected expected predictions for the same input
     */
-    void assert_nonempty_same_shape_(xt::xarray<double> predicted, xt::xarray<double> expected) const {
+    void assert_nonempty_same_shape_(const xt::xarray<double>& predicted, const xt::xarray<double>& expected) const {
         #ifndef NDEBUG
         
         str_assert(predicted.size() > 0, "Predicted value must be non-empty");
@@ -92,7 +92,7 @@ public:
      * @param expected what the network should have predicted for the input
      * @return loss of `predicted` and `expected`
      */
-    virtual double compute(xt::xarray<double> predicted, xt::xarray<double> expected) const = 0;
+    virtual double compute(const xt::xarray<double>& predicted, const xt::xarray<double>& expected) const = 0;
 
     /**
      * Returns the tensor-valued gradient of the loss, between `predicted` and `expected`, as computed by this calculator.
@@ -100,7 +100,7 @@ public:
      * @param expected what the network should have predicted for the input
      * @return gradient of the loss between `predicted` and `expected` wrapped in a Tensor
      */
-    virtual xt::xarray<double> compute_gradient(xt::xarray<double> predicted, xt::xarray<double> expected) const = 0;
+    virtual xt::xarray<double> compute_gradient(const xt::xarray<double>& predicted, const xt::xarray<double>& expected) const = 0;
 
     /**
     * Exports `calc` to the output stream `output_stream`, returning `output_stream` with `calc`'s information inside.
@@ -166,7 +166,7 @@ public:
      * @param expected what the model should have predicted for a given input. Has the same shape as `predicted`
      * @return MSE loss between `predicted` and `expected`
      */
-    double compute(xt::xarray<double> predicted, xt::xarray<double> expected) const override {
+    double compute(const xt::xarray<double>& predicted, const xt::xarray<double>& expected) const override {
         assert_nonempty_same_shape_(predicted, expected);
 
         double sum_sq = xt::sum(xt::square(predicted - expected))();
@@ -189,7 +189,7 @@ public:
      * @param expected what the model should have predicted for a given input. Has the same number of elements as `predicted`
      * @return gradient of MSE loss between `predicted` and `expected`
      */
-    xt::xarray<double> compute_gradient(xt::xarray<double> predicted, xt::xarray<double> expected) const override {
+    xt::xarray<double> compute_gradient(const xt::xarray<double>& predicted, const xt::xarray<double>& expected) const override {
         assert_nonempty_same_shape_(predicted, expected);
 
         xt::xarray<double> single_grad = (predicted - expected) / static_cast<double>(predicted.size());
@@ -249,7 +249,7 @@ public:
      * @param expected what the model should have predicted for a given input. Has the same shape as `predicted`
      * @return cross entropy loss between `predicted` and `expected`
      */
-    double compute(xt::xarray<double> predicted, xt::xarray<double> expected) const override {
+    double compute(const xt::xarray<double>& predicted, const xt::xarray<double>& expected) const override {
         assert_nonempty_same_shape_(predicted, expected);
 
         auto clipped_pred = xt::clip(predicted, epsilon, 1.0);
@@ -267,7 +267,7 @@ public:
      * @param expected what the model should have predicted for a given input. Has the same number of elements as `predicted`
      * @return gradient of cross entropy loss between `predicted` and `expected`
      */
-    xt::xarray<double> compute_gradient(xt::xarray<double> predicted, xt::xarray<double> expected) const override {
+    xt::xarray<double> compute_gradient(const xt::xarray<double>& predicted, const xt::xarray<double>& expected) const override {
         assert_nonempty_same_shape_(predicted, expected);
 
         auto clipped_pred = xt::clip(predicted, epsilon, 1.0 - epsilon);

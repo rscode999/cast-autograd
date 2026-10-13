@@ -84,13 +84,13 @@ Length of `new_hyperparams` and preconditions for each hyperparameter depend on 
 
 #### initialize
 
-*Signature:* `virtual void initialize(std::vector<std::shared_ptr>& operators) = 0`
+*Signature:* `virtual void initialize(std::vector<std::shared_ptr>& components) = 0`
 
 Loads the optimizer with all information needed for training.
 
 **Parameters**
 
-* `operators` (`std::vector<std::shared_ptr<NetworkComponent>>&`): Network components to optimize.
+* `components` (`std::vector<std::shared_ptr<NetworkComponent>>&`): Network components to optimize.
 
 ---
 

@@ -845,6 +845,20 @@ public:
     }
 
 
+    /**
+    * EXPERIMENTAL
+    */
+    xt::xarray<double> forward_linear(const xt::xarray<double>& input) {
+        xt::xarray<double> output = wrap_xarray_(input);
+
+        for(std::shared_ptr<NetworkComponent> component : components_) {
+            output = component->forward(output);
+        }
+
+        return unwrap_xarray_(output);
+    }
+
+
 
     /**
      * Computes the backward pass, beginning with loss between `predicted` and `expected`.
@@ -951,6 +965,18 @@ public:
         }
     }
 
+
+    /**
+    * EXPERIMENTAL
+    */
+    void backward_linear(const xt::xarray<double>& predicted, const xt::xarray<double>& expected) {
+        xt::xarray<double> output_loss_gradient = loss_calc_->compute_gradient(predicted, expected);
+
+        output_loss_gradient = wrap_xarray_(output_loss_gradient);
+        for (int32_t i = (int32_t)components_.size() - 1; i >= 0; i--) {
+            output_loss_gradient = components_[i]->backward(output_loss_gradient);
+        }
+    }
 
 
     /**

@@ -1,6 +1,8 @@
 #ifndef CAST_ACTIVATION_FUNCTION_
 #define CAST_ACTIVATION_FUNCTION_
 
+#include <xtensor/core/xnoalias.hpp>
+
 #include "cast_exceptions.hpp"
 #include "network_component.hpp"
 #include "operator.hpp"
@@ -73,7 +75,12 @@ public:
     xt::xarray<double> forward(const xt::xarray<double>& input) override {
         str_assert(input.size() > 0, "Input vector must be non-empty");
 
-        xt::xarray<double> output = (1 / (1 + exp(-input)) );
+        xt::xarray<double> output = input;
+
+        output *= -1.0;
+        xt::noalias(output) = xt::exp(output);
+        output += 1.0;
+        xt::noalias(output) = 1.0 / output;
 
         prev_outputs_ = output;
         return output;
@@ -91,15 +98,8 @@ public:
         str_assert(upstream_gradients.size() > 0, "Upstream gradients in Sigmoid backwards pass must be non-empty");
         str_assert(prev_outputs_.shape() == upstream_gradients.shape(), "The forward-pass Sigmoid function must have been previously computed on an input of the same length as `upstream_gradients`");
 
-        xt::xarray<double> output;
-
         // sigmoid(x) * (1.0 - sigmoid(x));
-        output = (upstream_gradients * prev_outputs_ * (1 - prev_outputs_));
-
-        //Clear the previous outputs
-        prev_outputs_ = xt::xarray<double>{};
-        
-        return output;
+        return (upstream_gradients * prev_outputs_ * (1 - prev_outputs_));
     }
 
     
@@ -164,8 +164,7 @@ public:
     xt::xarray<double> backward(const xt::xarray<double>& upstream_gradients) override {
         str_assert(upstream_gradients.size() > 0, "Upstream gradients in ReLU backwards pass must be non-empty");
 
-        xt::xarray<double> output = xt::where(upstream_gradients >= 0.0, 1.0, 0.0);
-        return output;
+        return xt::where(upstream_gradients >= 0.0, 1.0, 0.0);
     }
 };
 
@@ -248,31 +247,49 @@ public:
     xt::xarray<double> forward(const xt::xarray<double>& input) override {
         str_assert(input.size() > 0, "Input cannot be empty");
         str_assert(input.dimension() == 2, "Softmax must have exactly 2 axes");
+        str_assert(temp_coeff_ > 0.0, "Temperature must be positive");
 
-        prev_outputs_ = input;
+        const std::size_t batch = input.shape()[0];
+        const std::size_t features = input.shape()[1];
 
-        // Temperature scaling
-        xt::xarray<double> scaled_input = xt::eval(input / temp_coeff_);
+        xt::xarray<double> output = xt::xarray<double>::from_shape(input.shape());
 
-        // Maximum for each sample: [batch, 1]
-        xt::xarray<double> max_vals =
-            xt::eval(xt::amax(scaled_input, {1}, xt::keep_dims));
+        const double* x = input.data();
+        double* p = output.data();
+        const double inv_temp = 1.0 / temp_coeff_;
 
-        // [batch, features] - [batch, 1]
-        xt::xarray<double> shifted =
-            xt::eval(scaled_input - max_vals);
+        for (std::size_t b = 0; b < batch; ++b) {
+            const std::size_t offset = b * features;
 
-        // [batch, features]
-        xt::xarray<double> exp_vals =
-            xt::eval(xt::exp(shifted));
+            // Find maximum logit for numerical stability.
+            double max_val = x[offset] * inv_temp;
 
-        // Sum for each sample: [batch, 1]
-        xt::xarray<double> sum_exp =
-            xt::eval(xt::sum(exp_vals, {1}, xt::keep_dims));
+            for (std::size_t j = 1; j < features; ++j) {
+                const double value = x[offset + j] * inv_temp;
+                if (value > max_val) {
+                    max_val = value;
+                }
+            }
 
-        // [batch, features]
-        xt::xarray<double> output =
-            xt::eval(exp_vals / sum_exp);
+            // Exponentiate and sum.
+            double sum_exp = 0.0;
+            for (std::size_t j = 0; j < features; ++j) {
+                const double value = std::exp(x[offset + j] * inv_temp - max_val);
+
+                p[offset + j] = value;
+                sum_exp += value;
+            }
+
+            // Normalize.
+            const double inv_sum = 1.0 / sum_exp;
+
+            for (std::size_t j = 0; j < features; ++j) {
+                p[offset + j] *= inv_sum;
+            }
+        }
+
+        // Save probabilities for backward propagation.
+        prev_outputs_ = output;
 
         return output;
     }
@@ -291,20 +308,40 @@ public:
         str_assert(prev_outputs_.dimension() == 2, "Previous outputs must have exactly 2 axes");
         str_assert(prev_outputs_.shape() == upstream_gradients.shape(), "Upstream gradients must have the same shape as the input");
 
-        xt::xarray<double> scaled = xt::eval(prev_outputs_ / temp_coeff_);
+        const std::size_t batch = upstream_gradients.shape()[0];
+        const std::size_t features = upstream_gradients.shape()[1];
 
-        xt::xarray<double> max_vals = xt::eval(xt::amax(scaled, {1}, xt::keep_dims));
+        xt::xarray<double> result =
+            xt::xarray<double>::from_shape(upstream_gradients.shape());
 
-        xt::xarray<double> shifted = xt::eval(scaled - max_vals);
-        xt::xarray<double> exp_vals = xt::eval(xt::exp(shifted));
+        const double* p = prev_outputs_.data();
+        const double* g = upstream_gradients.data();
+        double* dx = result.data();
 
-        xt::xarray<double> sum_exp = xt::eval(xt::sum(exp_vals, {1}, xt::keep_dims));
+        const double inv_temp = 1.0 / temp_coeff_;
 
-        xt::xarray<double> S = xt::eval(exp_vals / sum_exp);
+        for (std::size_t b = 0; b < batch; ++b) {
+            const std::size_t offset = b * features;
 
-        xt::xarray<double> weighted_grad = xt::eval(upstream_gradients * S);
-        xt::xarray<double> sum_grad_s = xt::eval(xt::sum(weighted_grad, {1}, xt::keep_dims));
-        xt::xarray<double> result = xt::eval(S * (upstream_gradients - sum_grad_s) / temp_coeff_);
+            // sum_j(g_j * p_j)
+            double weighted_sum = 0.0;
+
+            for (std::size_t j = 0; j < features; ++j) {
+                weighted_sum +=
+                    g[offset + j] * p[offset + j];
+            }
+
+            // dL/dx_i = p_i * (g_i - weighted_sum) / T
+            for (std::size_t j = 0; j < features; ++j) {
+                dx[offset + j] =
+                    p[offset + j]
+                    * (g[offset + j] - weighted_sum)
+                    * inv_temp;
+            }
+        }
+
+        // Clear saved probabilities only after their final use.
+        prev_outputs_ = xt::xarray<double>{};
 
         return result;
     }
