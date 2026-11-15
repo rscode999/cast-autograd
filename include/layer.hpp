@@ -6,6 +6,7 @@
 #include <xtensor/containers/xarray.hpp>
 #include <xtensor/generators/xrandom.hpp>
 #include <xtensor-blas/xlinalg.hpp>
+#include <xtensor/core/xnoalias.hpp>
 
 #include <source_location>
 #include <string>
@@ -205,7 +206,9 @@ public:
         shape_str_assert_(input.shape() [1] == input_vector_dimension_, "Input vectors (length " + std::to_string(input.shape() [1]) + ") must have length " + std::to_string(input_vector_dimension_));
 
         prev_inputs_ = input;
-        return xt::linalg::dot(input, xt::transpose(parameters_[Weights])) + parameters_[Biases];
+        xt::xarray<double> out = xt::linalg::dot(input, xt::transpose(parameters_[Weights]));
+        out += parameters_[Biases];
+        return out;
     }
 
 
@@ -224,8 +227,8 @@ public:
         shape_str_assert_(upstream_gradients.shape() [1] == output_vector_dimension_, "Upstream gradient vectors (length " + std::to_string(upstream_gradients.shape() [1]) + ") must have length " + std::to_string(output_vector_dimension_));
 
         auto d_input = xt::linalg::dot(upstream_gradients, parameters_[Weights]); 
-        gradients_[Weights] = xt::linalg::dot(xt::transpose(upstream_gradients), prev_inputs_); 
-        gradients_[Biases] = xt::sum(upstream_gradients, {0}); 
+        xt::noalias(gradients_[Weights]) = xt::linalg::dot(xt::transpose(upstream_gradients), prev_inputs_); 
+        xt::noalias(gradients_[Biases]) = xt::sum(upstream_gradients, {0}); 
 
         return d_input;
     }

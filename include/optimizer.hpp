@@ -6,6 +6,7 @@
 
 #include <xtensor/generators/xbuilder.hpp>
 #include <xtensor/io/xio.hpp>
+#include <xtensor/core/xnoalias.hpp>
 
 #include <iostream>
 #include <initializer_list>
@@ -291,14 +292,14 @@ public:
             std::vector<xt::xarray<double>>& vels = velocities_[l];
 
             // Do SGD update on each of the layer's parameters
-            for(int32_t i = 0; i < layers_[l]->parameters().size(); i++) {
+            const int32_t layer_parameter_size = (int32_t)(layers_[l]->parameters().size());
+            for(int32_t i = 0; i < layer_parameter_size; i++) {
 
                 //v = momentum * v + learning_rate * gradient
-                vels[i] = momentum_coeff * vels[i] + learning_rate * grads[i];
-
+                xt::noalias(vels[i]) = momentum_coeff * vels[i] + learning_rate * grads[i];
                 //param = param - v
-                params[i] -= vels[i];
-                
+                xt::noalias(params[i]) -= vels[i];
+
                 //set gradients to 0
                 if(zero_grad) {
                     grads[i].fill(0.0);

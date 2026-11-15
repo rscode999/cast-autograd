@@ -105,7 +105,8 @@ private:
         xt::xarray<double> component_input;
     };
 
-
+    
+private:
  
     /**
     * Throws `bad_component_addition` if `combine_branch_ids` and `branch_id` are incompatible with each other or the current network configuration.
@@ -533,10 +534,15 @@ public:
     * Removes all data related to training in the network's optimizer.
     *
     * If the network has no defined optimizer, throws `cast::bad_network_config`.
+    *
+    * To use this method, the network must be disabled.
     */
     void clear_training_state() {
         if(!optimizer_) {
             throw bad_network_config("Optimizer must be defined to clear its training state");
+        }
+        if(!enabled_) {
+            throw bad_network_config("Network cannot be enabled when clearing training state");
         }
         optimizer_->clear_training_state();
     }
@@ -550,71 +556,34 @@ public:
         enabled_ = false;
     }
 
-    
 
     /**
-     * Checks if the network has the necessary components to run. 
-     * If not, throws `cast::enable_failed_error` (a subclass of `cast::bad_network_config`, which is itself a subclass of `std::exception`). 
-     * If so, allows training and optimization.
-     *
-     * If successful, this method initializes the stored optimizer.
-     *
-     * Conditions to run:
-     * The network must have a loss calculator, optimizer, and at least one component.
-     * The network must have exactly one unterminated branch.
-     */
+    * Enables the network, allowing training and preventing modification, if the enable check passes.
+    * 
+    * Enable check: The network must have a loss calculator, optimizer, at least one component, and exactly one unterminated branch.
+    * 
+    * If the enable check fails, this method throws `enable_failed_error` 
+    * (a subclass of `cast::bad_network_config`, which is itself a subclass of `std::exception`).
+    * If the check passes, the network is prepared for training.
+    */
     void enable() {
         if(!loss_calc_) {
-            throw enable_failed_error("Network needs a defined loss calculator");
+            throw enable_failed_error("Loss calculator must be defined to enable the network");
         }
         if(!optimizer_) {
-            throw enable_failed_error("Network needs a defined optimizer");
+            throw enable_failed_error("Optimizer must be defined to enable the network");
         }
 
-        //Check that the network has operators
-        if((int32_t)leaf_node_indices_.size() == 0) {
-            throw enable_failed_error("Network must have at least one component");
+        if(components_.empty()) {
+            throw enable_failed_error("The network must have at least one component to enable the network");
         }
-        if(components_.size() == 0) {
-            throw enable_failed_error("Network must have at least one operator");
-        }
-
-        //Check that the network's first element is not a combiner
-        if(std::dynamic_pointer_cast<Combiner>(components_[0]) != nullptr) {
-            throw enable_failed_error("First operator in the network cannot be a combiner");
-        }
-
-        //Check that the network's first component is the input (i.e. has no predecessors)
-        if(components_[0]->predecessors_.size() > 0) {
-            throw enable_failed_error("First operator in the network must be the input");
-        }
-
-        //Check for single output
-        //If there is not exactly 1 unmerged branch, convert all unmerged branch IDs to a string and error
         if(leaf_node_indices_.size() != 1) {
-            std::string unmerged_branches_str = "";
-            for(std::pair<int32_t, int32_t> branch_end : leaf_node_indices_) {
-                unmerged_branches_str += std::to_string(branch_end.first) + ", ";
-            }
-            throw enable_failed_error("Network must have exactly one output. Remaining branches: " + unmerged_branches_str);
+            throw enable_failed_error("The network must have exactly one output to enable the network");
         }
 
-        //All control paths are assigned to a branch
-        for(int32_t i = 0; i < (int32_t)components_.size(); i++) {
-            try {
-                (void)components_[i]->branch_id();
-            }
-            catch(unassigned_branch_error& e) {
-                throw enable_failed_error("Invalid branch ID at component index " + std::to_string(i) + ": " + e.what());
-            }
-        }
-
-        //IMPORTANT: Initialization logic must come AFTER the checks. Otherwise, this method could be in a try/catch and allow training, even though the check failed.
         optimizer_->initialize(components_);
-        components_.shrink_to_fit();
         enabled_ = true;
     }
-
 
 
     /**
@@ -746,118 +715,91 @@ public:
      * @return result of forward pass
      */
     xt::xarray<double> forward(const xt::xarray<double>& input) {
-        if(!enabled_) {
-            throw bad_network_config("Must enable the network prior to training");
+        if (!enabled_) {
+            throw bad_network_config(
+                "Must enable the network prior to training"
+            );
         }
-        //Batch size, number of batches check
-        str_assert(batch_size() == 0 || input.shape() [0] == batch_size(), "If training in batches, input's axis 0 must have " + std::to_string(batch_size()) + " elements (got " + std::to_string(input.shape()[0]) + ")");
 
-        std::queue<ComponentExecutionData> execution_queue;
+        str_assert(
+            batch_size() == 0 || input.shape()[0] == batch_size(),
+            "Input batch size mismatch"
+        );
 
-        xt::xarray<double> wrapped_input = wrap_xarray_(input);
-        // std::cout << wrapped_input << std::endl;
-        execution_queue.push({0, 0, wrapped_input});
+        std::vector<xt::xarray<double>> branch_outputs(next_branch_id_);
 
-        while(!execution_queue.empty()) {
-            //Thought this might help with thread safety
-            if(!enabled_) {
-                throw bad_network_config("Must enable the network prior to training");
+        branch_outputs[0] = wrap_xarray_(input);
+
+        // for (const auto& component : components_) {
+        //     std::cout << *component << "\n";
+        // }
+        // std::cout << std::endl;
+
+        for (const auto& component : components_) {
+
+            if (!enabled_) {
+                throw bad_network_config(
+                    "Must enable the network prior to training"
+                );
             }
 
-            ComponentExecutionData current = execution_queue.front();
-            execution_queue.pop();
+            int32_t branch_id = component->branch_id();
 
-            int32_t branch_id = current.branch_id;
-            int32_t component_idx = current.component_index;
-            
-            //Get the component from the network's storage list
-            std::shared_ptr<NetworkComponent> current_component = components_.at(component_idx);
-            // std::cout << "Executing " << current_op->name() << std::endl;
+            // Splitter
+            if (auto splitter = std::dynamic_pointer_cast<Splitter>(component)) {
+                auto outputs = splitter->forward(branch_outputs[branch_id], true);
 
-            // Handle splitters: Push all of its successors, including itself, into the execution queue
-            if (std::shared_ptr<Splitter> splitter = std::dynamic_pointer_cast<Splitter>(current_component)) {
-                std::vector<xt::xarray<double>> branch_output = splitter->forward(current.component_input, true);
+                str_assert(outputs.size() == splitter->successors().size(), "Splitter output count mismatch");
 
-                std::unordered_map<int32_t, int32_t> successors = splitter->successors();
-                str_assert(!successors.empty(), "Branch must have at least one successor");
+                int32_t output_idx = 0;
+                for (const auto& [successor_branch_id, component_id] : splitter->successors()) {
 
-                std::unordered_map<int32_t, int32_t>::iterator succ_it = successors.begin();
-
-                //Push all successors to the queue
-                for(size_t out_idx = 0; succ_it != successors.end(); ++succ_it, ++out_idx) {
-                    int32_t succ_branch_id = succ_it->first;
-                    int32_t succ_component_idx = succ_it->second;
-                    xt::xarray<double> out_data = branch_output[out_idx < branch_output.size() ? out_idx : 0];
-                    execution_queue.push({succ_branch_id, succ_component_idx, out_data});
+                    branch_outputs[successor_branch_id] = std::move(outputs[output_idx]);
+                    ++output_idx;
                 }
             }
-            // Handle combiners
-            else if(std::shared_ptr<Combiner> combiner = std::dynamic_pointer_cast<Combiner>(current_component)) {
-                xt::xarray<double> combiner_output = combiner->forward(current.component_input);
+
+            // Combiner
+            else if (auto combiner = std::dynamic_pointer_cast<Combiner>(component)) {
+                std::vector<std::pair<int32_t, int32_t>> predecessors(
+                    component->predecessors().begin(),
+                    component->predecessors().end()
+                );
+
+                std::sort(
+                    predecessors.begin(),
+                    predecessors.end()
+                );
+
+                std::vector<std::reference_wrapper<const xt::xarray<double>>> combiner_input;
+
+                combiner_input.reserve(predecessors.size());
                 
-                // Combiner output is non-empty only when all required inputs have arrived (i.e. its output is non-empty)
-                if(!(combiner_output.size() == 0)) {
-                    // std::cout << "Combiner is ready" << std::endl;
-                    
-                    //The Combiner has no successors: Return
-                    if(combiner->successors().empty()) {
-                        // std::cout << "COMBINER HAS NO SUCCESSORS" << std::endl;
-                        return unwrap_xarray_(combiner_output);
-                    }
-
-                    const std::unordered_map<int32_t, int32_t> succs = combiner->successors();
-                    str_assert(succs.size() == 1, "Combiner must have one successor");
-                    
-                    //Push the combiner's single successor to the execution queue
-                    int32_t target_branch_id = succs.begin()->first;
-                    int32_t target_op_idx = succs.begin()->second;
-                    execution_queue.push({target_branch_id, target_op_idx, combiner_output});
+                for (const auto& [input_branch_id, predecessor_idx] : predecessors) {
+                    combiner_input.emplace_back(std::cref(branch_outputs[input_branch_id]));
                 }
+
+                branch_outputs[branch_id] = combiner->forward(combiner_input);
             }
-            // Handle single operator
+
+            // Regular operator
             else {
-                xt::xarray<double> op_output;
-
-                //Compute the output. If incompatible shapes, re-throw the shape error
-                try {
-                    op_output = current_component->forward(current.component_input);
-                }
-                catch(shape_error& e) {
-                    throw shape_error("Input to " + current_component->to_string() + " (branch " + std::to_string(current_component->branch_id()) + "): " + e.what());
-                }
-
-                //No successors: Return (this is the single operator with no successors)
-                if(current_component->successors().empty()) {
-                    return unwrap_xarray_(op_output);
-                }
-
-                const std::unordered_map<int32_t, int32_t> succs = current_component->successors();
-                str_assert(succs.size() == 1, "Operator must have exactly one successor");
-
-                //Push the operator's single successor to the execution queue
-                int32_t target_branch_id = succs.begin()->first;
-                int32_t target_op_idx = succs.begin()->second;
-                execution_queue.push({target_branch_id, target_op_idx, op_output});
+                branch_outputs[branch_id] = component->forward(branch_outputs[branch_id]);
             }
+            
+            // //DEBUG
+            // for(xt::xarray<double> b : branch_outputs) {
+            //     std::cout << b;
+            // }
+            // std::cout << std::endl;
         }
 
-        throw std::runtime_error("Forward pass finished without reaching an output node.");
+        str_assert(leaf_node_indices_.size() == 1, "Network must have exactly one output branch");
+
+        return unwrap_xarray_(
+            branch_outputs[leaf_node_indices_.begin()->first]
+        );
     }
-
-
-    /**
-    * EXPERIMENTAL
-    */
-    xt::xarray<double> forward_linear(const xt::xarray<double>& input) {
-        xt::xarray<double> output = wrap_xarray_(input);
-
-        for(std::shared_ptr<NetworkComponent> component : components_) {
-            output = component->forward(output);
-        }
-
-        return unwrap_xarray_(output);
-    }
-
 
 
     /**
@@ -873,96 +815,163 @@ public:
      * @param expected what the network should have predicted for the input
      */
     void backward(const xt::xarray<double>& predicted, const xt::xarray<double>& expected) {
-        if(!enabled_) {
-            throw bad_network_config("Must enable the network prior to computing backwards pass");
+        if (!enabled_) {
+            throw bad_network_config(
+                "Must enable the network prior to training"
+            );
         }
 
-        xt::xarray<double> output_loss_gradient = loss_calc_->compute_gradient(predicted, expected);
-        str_assert(batch_size() == 0 || output_loss_gradient.shape() [0] == batch_size(), "If training with batch size, input's axis 0 must have " + std::to_string(batch_size()) + " elements (got " + std::to_string(output_loss_gradient.shape()[0]) + ")");
-
-        std::queue<ComponentExecutionData> execution_queue;
-        int32_t output_components_idx = (int32_t)components_.size() - 1;
-        int32_t output_branch_id = components_[output_components_idx]->branch_id_;
+        xt::xarray<double> output_gradient = loss_calc_->compute_gradient(predicted, expected);
         
-        execution_queue.push({output_branch_id, output_components_idx, wrap_xarray_(output_loss_gradient)});
 
-        while(!execution_queue.empty()) {
-            //Thought this might help with thread safety
-            if(!enabled_) {
-                throw bad_network_config("Must enable the network prior to computing backwards pass");
+        str_assert(
+            leaf_node_indices_.size() == 1,
+            "Network must have exactly one output branch"
+        );
+
+        // One gradient accumulator per branch.
+        std::vector<xt::xarray<double>> branch_gradients(next_branch_id_);
+
+        // Initialize the output gradient.
+        int32_t output_branch_id = leaf_node_indices_.begin()->first;
+
+        branch_gradients[output_branch_id] = wrap_xarray_(output_gradient);
+
+        // Gradient with respect to the original network input.
+        xt::xarray<double> input_gradient;
+
+        // Traverse components in reverse topological order.
+        for (auto it = components_.rbegin(); it != components_.rend(); ++it) {
+            if (!enabled_) {
+                throw bad_network_config(
+                    "Must enable the network prior to training"
+                );
             }
 
-            ComponentExecutionData current = execution_queue.front();
-            execution_queue.pop();
+            const auto& component = *it;
 
-            int32_t branch_id = current.branch_id;
-            int32_t op_idx = current.component_index;
+            int32_t branch_id = component->branch_id();
 
-            std::shared_ptr<NetworkComponent> current_component = components_.at(op_idx);
+            // Splitter
+            if (auto splitter = std::dynamic_pointer_cast<Splitter>(component)) {
 
-            // Handle splitters (act like combiners in the backwards pass, collecting inputs)
-            if (std::shared_ptr<Splitter> splitter = std::dynamic_pointer_cast<Splitter>(current_component)) {
-                xt::xarray<double> branch_grads = splitter->backward(current.component_input);
+                const auto& splitter_successors = splitter->successors();
 
-                // Branch output is non-empty only when all required inputs have arrived
-                if (!(branch_grads.size() == 0)) {
-                    const std::unordered_map<int32_t, int32_t> preds = splitter->predecessors();
-                    if (preds.empty()) {
-                        return;
-                    }
+                std::vector<xt::xarray<double>> successor_gradients;
+                successor_gradients.reserve(splitter_successors.size());
 
-                    // std::cout << "Output: " << branch_grads[0] << std::endl;
-                    
-                    str_assert(preds.size() == 1, "Splitter must have exactly one predecessor");
-                    //Push all predecessors to the queue
-                    auto pred_it = preds.begin();
-                    execution_queue.push({pred_it->first, pred_it->second, branch_grads});
+                // Collect gradients from every successor branch.
+                for (const auto& [successor_branch_id, component_idx] :
+                    splitter_successors) {
+
+                    str_assert(
+                        branch_gradients[successor_branch_id].size() > 0,
+                        "Missing gradient for splitter successor branch " +
+                        std::to_string(successor_branch_id)
+                    );
+
+                    successor_gradients.push_back( std::move(branch_gradients[successor_branch_id]));
+
+                    branch_gradients[successor_branch_id] = xt::xarray<double>();
+                }
+
+                // Create references to the gradients.
+                std::vector<std::reference_wrapper<const xt::xarray<double>>> gradient_refs;
+
+                gradient_refs.reserve(successor_gradients.size());
+
+                for (const auto& gradient : successor_gradients) {
+                    gradient_refs.emplace_back(std::cref(gradient));
+                }
+
+                // Sum gradients from all successor branches.
+                xt::xarray<double> prev_gradient = splitter->backward(gradient_refs);
+
+                // Propagate to the splitter's predecessor.
+                str_assert(
+                    splitter->predecessors().size() == 1,
+                    "Splitter must have exactly one predecessor"
+                );
+                
+                branch_gradients[branch_id] = std::move(prev_gradient);
+            }
+
+            // -----------------------------------------
+            // Combiner
+            // -----------------------------------------
+            else if (auto combiner = std::dynamic_pointer_cast<Combiner>(component)) {
+                // Retrieve and clear the incoming gradient.
+                xt::xarray<double> current_gradient = std::move(branch_gradients[branch_id]);
+
+                branch_gradients[branch_id] = xt::xarray<double>();
+
+                str_assert(
+                    current_gradient.size() > 0,
+                    "Missing gradient for combiner branch " +
+                    std::to_string(branch_id)
+                );
+
+                // Obtain predecessor branches in deterministic order.
+                std::vector<int32_t> predecessor_branch_ids;
+
+                for (const auto& [input_branch_id, predecessor_idx] : component->predecessors()) {
+                    predecessor_branch_ids.push_back(input_branch_id);
+                }
+
+                std::sort(
+                    predecessor_branch_ids.begin(),
+                    predecessor_branch_ids.end()
+                );
+
+                // Distribute gradient to all predecessors.
+                auto gradients = combiner->backward(current_gradient, true);
+
+                str_assert(
+                    gradients.size() == predecessor_branch_ids.size(),
+                    "Combiner backward output count mismatch"
+                );
+
+                for (size_t i = 0; i < gradients.size(); ++i) {
+                    branch_gradients[predecessor_branch_ids[i]] = std::move(gradients[i]);
                 }
             }
-            // Handle combiners (act like splitters in the backwards pass, distributing gradients)
-            else if (std::shared_ptr<Combiner> combiner = std::dynamic_pointer_cast<Combiner>(current_component)) {
-                std::vector<xt::xarray<double>> combiner_outputs = combiner->backward(current.component_input, true);
 
-                std::unordered_map<int32_t, int32_t> preds = combiner->predecessors();
-                str_assert(!preds.empty(), "Combiner must have at least one predecessor");
-
-                //Push all predecessors to the execution queue
-                auto pred_it = preds.begin();
-                for (size_t out_idx = 0; pred_it != preds.end(); ++pred_it, ++out_idx) {
-                    int32_t pred_branch_id = pred_it->first;
-                    int32_t pred_op_idx = pred_it->second;
-                    xt::xarray<double> out_data = combiner_outputs[out_idx < combiner_outputs.size() ? out_idx : 0];
-
-                    execution_queue.push({pred_branch_id, pred_op_idx, out_data});
-                }
-            }
-            // Handle single operators
+            // -----------------------------------------
+            // Regular operator
+            // -----------------------------------------
             else {
-                xt::xarray<double> op_output;
+                // // First operator: exit
+                // if(component->predecessors().empty()) {
+                //     return;
+                // }
 
-                //Compute the output. If incompatible shapes, re-throw the shape error
-                try {
-                    op_output = current_component->backward(current.component_input);
-                }
-                catch(shape_error& e) {
-                    throw shape_error("Backwards-pass input to " + current_component->to_string() + " (branch " + std::to_string(current_component->branch_id()) + "): " + e.what());
-                }
+                // Retrieve and clear the incoming gradient.
+                xt::xarray<double> current_gradient = std::move(branch_gradients[branch_id]);
 
-                const std::unordered_map<int32_t, int32_t>& preds = current_component->predecessors();
-                //Stop early if there are no predecessors (it's the first component in the network)
-                if (preds.empty()) {
-                    return;
-                }
-                //otherwise, the operator can have at most one component
-                str_assert(preds.size() == 1, "Operator must have exactly one predecessor");
+                str_assert(
+                    current_gradient.size() > 0,
+                    "Missing gradient for operator branch " +
+                    std::to_string(branch_id)
+                );
 
-                //Push its sole predecessor to the execution queue
-                std::unordered_map<int32_t, int32_t>::const_iterator pred_it = preds.begin();
-                int32_t pred_branch_id = pred_it->first;
-                int32_t pred_op_idx = pred_it->second;
-                execution_queue.push({pred_branch_id, pred_op_idx, op_output});
+                // Calculate gradient with respect to the input.
+                xt::xarray<double> prev_gradient = component->backward(current_gradient);
+
+                // Put result in branch grads.
+                branch_gradients[branch_id] = std::move(prev_gradient);
             }
+
+            // //DEBUG
+            // for(xt::xarray<double> b : branch_gradients) {
+            //     std::cout << b;
+            // }
+            // std::cout << std::endl;
         }
+
+        str_assert(
+            input_gradient.size() > 0,
+            "Backwards pass finished without producing an input gradient"
+        );
     }
 
 
@@ -970,10 +979,18 @@ public:
     * EXPERIMENTAL
     */
     void backward_linear(const xt::xarray<double>& predicted, const xt::xarray<double>& expected) {
-        xt::xarray<double> output_loss_gradient = loss_calc_->compute_gradient(predicted, expected);
+        int32_t start_idx = (int32_t)components_.size() - 1;
+        xt::xarray<double> output_loss_gradient;
+        if(components_[components_.size() - 1]->to_string() == "softmax" && loss_calc_->to_string() == "cross_entropy") {
+            output_loss_gradient = (predicted - expected) / (double)batch_size();
+            start_idx -= 1;
+        }
+        else {
+            output_loss_gradient = loss_calc_->compute_gradient(predicted, expected);
+        }
 
         output_loss_gradient = wrap_xarray_(output_loss_gradient);
-        for (int32_t i = (int32_t)components_.size() - 1; i >= 0; i--) {
+        for (int32_t i = start_idx; i >= 0; i--) {
             output_loss_gradient = components_[i]->backward(output_loss_gradient);
         }
     }

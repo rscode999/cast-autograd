@@ -238,8 +238,10 @@ Resets the network optimizer's training data.
 
 Equivalent to removing the network's optimizer, then assigning an idential optimizer with the same hyperparameters.
 
+To use this method, the network cannot be enabled.
+
 **Exceptions**
-* `cast::bad_network_config`: If the network has no defined optimizer.
+* `cast::bad_network_config`: If the network has no defined optimizer, or the network is enabled.
 
 ---
 
@@ -261,8 +263,8 @@ Enables the network, allowing training and preventing modification, if the enabl
 
 Enable check: The network must have a loss calculator, optimizer, at least one component, and exactly one unterminated branch.
 
-If the enable check fails, this method throws `enable_failed_error` (a subclass of `cast::bad_network_config`, which is itself a subclass of `std::exception`).
-
+If the enable check fails, this method throws `enable_failed_error` (a subclass of `cast::bad_network_config`, which is itself a subclass of `std::exception`).  
+If the check passes, the network is prepared for training.
 
 **Exceptions**
 

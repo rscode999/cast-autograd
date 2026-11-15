@@ -95,43 +95,27 @@ public:
 
 
     /**
-    * Returns the empty vector. Upon receiving the `branch_count()`-th input, returns the result of the splitter's backpropagation operation
+    * Returns  the result of the splitter's backpropagation operation
     * computed on all received inputs.
-    * @param successor_gradient single successor gradient. Size and shape of all its elements match those of the first given input
+    * @param successor_gradients single successor gradient. Size and shape of all its elements match those of the first given input
     * @return empty vector, or backprop gradients (if all inputs are received)
     */
-    virtual xt::xarray<double> backward(const xt::xarray<double>& successor_gradient) override {
-        // Perform shape and size assertions if this is not the first input
-        if (!successor_outputs_.empty()) {
-            const auto& first_input = successor_outputs_[0];
-        
-            // Check that each tensor's shape matches the corresponding tensor in the first input
-            str_assert(successor_gradient.shape() == first_input.shape(), "All inputs to splitter backpropagation must have the same shape");
+    xt::xarray<double> backward(const std::vector<std::reference_wrapper<const xt::xarray<double>>>& successor_gradients) {
+        str_assert(
+            !successor_gradients.empty(),
+            "Splitter requires at least one output gradient"
+        );
+
+        xt::xarray<double> result =
+            xt::zeros<double>(
+                successor_gradients[0].get().shape()
+            );
+
+        for (const auto& gradient : successor_gradients) {
+            result += gradient.get();
         }
 
-
-        // Store the current incoming gradient vector
-        successor_outputs_.push_back(successor_gradient);
-
-        // Check if we have received gradients from all successor branches
-        if ((int32_t)successor_outputs_.size() == branch_count_) {
-
-            //Initialize tensor output to zeros
-            xt::xarray<double> accumulated_gradients = xt::zeros<double>(successor_outputs_[0].shape());
-
-            // Sum up the gradients from all successor branches
-            for(xt::xarray<double> output : successor_outputs_) {
-                accumulated_gradients += output;
-            }
-
-            // Clear successor_outputs_ for future passes
-            successor_outputs_.clear();
-
-            return accumulated_gradients;
-        }
-
-        // Return an empty tensor for any inputs prior to the branch_count_-th input
-        return xt::xarray<double>(xt::xarray<double>::shape_type{0});
+        return result;
     }
 
 
@@ -140,6 +124,13 @@ public:
     */
     xt::xarray<double> forward(const xt::xarray<double>& unused) override {
         throw not_implemented("Splitter forward method using only a xarray<double> does not exist");
+    }
+
+    /**
+    * DO NOT USE! Throws `cast::not_implemented`. The method exists solely to implement a virtual method.
+    */
+    xt::xarray<double> backward(const xt::xarray<double>& unused) override {
+        throw not_implemented("Splitter backward method using only a xarray<double> does not exist");
     }
 };
 
@@ -159,12 +150,6 @@ protected:
     */
     std::vector<int32_t> branch_indices_;
 
-    /**
-    * Outputs from each branch that is merged by this Combiner. Index `i` corresponds to the output from branch `branch_indices_[i]`.
-    *
-    * Starts EMPTY.
-    */
-    std::vector<xt::xarray<double>> combined_predecessor_outputs_;
 
 
     /**
@@ -193,8 +178,6 @@ public:
     */
     Combiner(std::initializer_list<int32_t> branch_indices) : branch_indices_(branch_indices)  {
         str_assert(branch_indices.size() > 0, "Number of branch indices given must be at least 2");
-
-        combined_predecessor_outputs_.reserve(branch_indices.size());
     }
 
 
@@ -241,32 +224,41 @@ public:
 
 
     /**
-    * Returns the empty vector. Upon receiving the `branch_indices().size()`-th input, returns the element-wise sum of all inputs given.
-    * @param predecessor_output layer outputs. Has the same size and matching corresponding shapes as the first input given
-    * @return sum of all inputs, or an empty tensor if not all branches are combined
+    * Returns the element-wise sum of all inputs given.
+    * @param predecessor_outputs layer outputs from all predecessors
+    * @return sum of all inputs
     */
-    xt::xarray<double> forward(const xt::xarray<double>& predecessor_output) override {
-        str_assert(predecessor_output.size() > 0, "Combiner requires at least 1 input");
+    xt::xarray<double> forward(const std::vector<std::reference_wrapper<const xt::xarray<double>>>& predecessor_outputs) {
+        str_assert(
+            predecessor_outputs.size() == branch_indices_.size() + 1,
+            "Incorrect number of combiner inputs"
+        );
+        str_assert(
+            !predecessor_outputs.empty() && predecessor_outputs[0].get().size() > 0,
+            "Combiner requires non-empty inputs"
+        );
+
         assert_no_self_assign_();
 
-        //Add the most recent input
-        combined_predecessor_outputs_.push_back(predecessor_output);
+        xt::xarray<double> sum = xt::zeros<double>(predecessor_outputs[0].get().shape());
 
-        //Return the sum if all outputs have been combined
-        if(combined_predecessor_outputs_.size() == branch_indices_.size() + 1) {
-            xt::xarray<double> sum = xt::zeros<double>(combined_predecessor_outputs_[0].shape());
-        
-            for(xt::xarray<double> output : combined_predecessor_outputs_) {
-                sum += output;
-            }
+        for (const auto& input : predecessor_outputs) {
+            str_assert(
+                input.get().shape() == predecessor_outputs[0].get().shape(),
+                "Combiner input shapes must match"
+            );
 
-            //Clear the outputs
-            combined_predecessor_outputs_.clear();
-            return sum;
+            sum += input.get();
         }
 
-        // Return an empty tensor for any inputs prior to the branch_count_-th input
-        return xt::xarray<double>(xt::xarray<double>::shape_type{0});
+        return sum;
+    }
+
+    /**
+    * DO NOT USE!
+    */
+    xt::xarray<double> forward(const xt::xarray<double>& unused) override {
+        throw not_implemented("Do not use the single-input forward method on a Combiner");
     }
 
 

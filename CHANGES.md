@@ -8,6 +8,11 @@
     - Optimizer stores only layers, avoiding `std::dynamic_pointer_cast` in calls to `optimize`
     - `Optimizer::step` zero-grad updates occur in place, instead of creating a new array on every zero-grad
 
+- Network `clear_training_state` can be called only if the network is disabled.
+
+- Network training does not use a queue.
+    - The Splitter backward method and Combiner forward method does not internally store input vectors until enough have been received.
+
 ## 0.11.0
 *4 October 2026*
 

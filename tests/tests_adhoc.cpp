@@ -12,26 +12,23 @@ using namespace cast;
 
 
 int main() {
-    xt::xarray<double> logits = {
-    {1.0, 2.0, 3.0, 4.0}
-    };
+    Network net;
 
-    xt::xarray<double> target = {
-        {0.0, 0.0, 0.0, 1.0}
-    };
+    net.add_operator(make_shared<Linear1d>(2, 4));
+    net.add_splitter(2);
+    net.add_operator(make_shared<Sigmoid>());
+    net.add_operator(make_shared<Linear1d>(4, 4));
+    net.add_operator(make_shared<Linear1d>(4, 4), 1);
+    net.add_combiner({1});
 
-    Softmax s;
-    xt::xarray<double> out = s.forward(logits);
-    std::cout << out << endl;
+    net.set_loss_calculator(make_shared<MeanSquaredError>());
+    net.set_optimizer(make_shared<SGD>(0.05, 0.9));
 
-    CrossEntropy ce;
+    net.enable();
 
-    std::cout << ce.compute(out, target) << std::endl;
-    std::cout << ce.compute_gradient(out, target) << std::endl;
+    xt::xarray<double> in = {1, 2};
 
-    auto ce_grad = ce.compute_gradient(out, target);
-    auto logits_grad = s.backward(ce_grad);
-
-    std::cout << "CE grad:\n" << ce_grad << "\n";
-    std::cout << "logits grad:\n" << logits_grad << "\n";
+    xt::xarray<double> out = net.forward(in);
+    cout << "FORWARD RESULT: " << out << endl;
+    net.backward(out, xt::xarray<double> {0,0,0,0});
 }

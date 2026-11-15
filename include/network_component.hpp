@@ -126,7 +126,7 @@ public:
     /**
     * @return indices to this operator's inputs. Maps: branch ID -> ID of predecessor in a network
     */
-    std::unordered_map<int32_t, int32_t> predecessors() const {
+    const std::unordered_map<int32_t, int32_t>& predecessors() const {
         return predecessors_;
     }
 
@@ -134,7 +134,7 @@ public:
     /**
     * @return indices to this operator's outputs. Maps: branch ID -> ID of successor in a network
     */
-    std::unordered_map<int32_t, int32_t> successors() const {
+    const std::unordered_map<int32_t, int32_t>& successors() const {
         return successors_;
     }
 

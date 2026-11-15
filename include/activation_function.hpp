@@ -112,6 +112,12 @@ public:
 * Rectified Linear Unit (ReLU) function
 */
 class ReLU : public ActivationFunction {
+private:
+    /**
+    * Inputs given to this function
+    */
+    xt::xarray<double> prev_inputs_;
+
 public:
     /**
     * Creates a new ReLU activation function
@@ -150,6 +156,7 @@ public:
     */
     xt::xarray<double> forward(const xt::xarray<double>& input) override {
         str_assert(input.size() > 0, "Input vector must be non-empty");
+        prev_inputs_ = std::move(input);
         return xt::maximum(input, 0.0);
     }
 
@@ -161,10 +168,9 @@ public:
     * @param upstream_gradients list of values to compute. Non-empty
     * @return d(ReLU(x))/dx for each element x of `upstream_gradients`
     */
-    xt::xarray<double> backward(const xt::xarray<double>& upstream_gradients) override {
-        str_assert(upstream_gradients.size() > 0, "Upstream gradients in ReLU backwards pass must be non-empty");
-
-        return xt::where(upstream_gradients >= 0.0, 1.0, 0.0);
+    xt::xarray<double> backward(const xt::xarray<double>& upstream_gradients ) override {
+        str_assert(  upstream_gradients.shape() == prev_inputs_.shape(),"ReLU gradient shape mismatch");
+        return upstream_gradients * xt::cast<double>(prev_inputs_ > 0.0);
     }
 };
 

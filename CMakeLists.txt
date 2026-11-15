@@ -11,6 +11,18 @@ set(SOURCES
     main.cpp
 )
 
+target_compile_definitions(my_network PRIVATE HAVE_CBLAS=1)
+
+target_include_directories(my_network PRIVATE
+    "$ENV{CONDA_PREFIX}/Library/include"
+)
+
+target_link_directories(my_network PRIVATE
+    "$ENV{CONDA_PREFIX}/Library/lib"
+)
+
+target_link_libraries(my_network PRIVATE openblas)
+
 # Build the executable
 add_executable(cast_autograd ${SOURCES})
 

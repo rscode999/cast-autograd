@@ -252,11 +252,19 @@ public:
     double compute(const xt::xarray<double>& predicted, const xt::xarray<double>& expected) const override {
         assert_nonempty_same_shape_(predicted, expected);
 
-        auto clipped_pred = xt::clip(predicted, epsilon, 1.0);
-        double divisor = (batch_size_ == 0) ? 1.0 : static_cast<double>(predicted.shape() [0]);
+        const double divisor = (batch_size_ == 0) ? 1.0 : static_cast<double>(predicted.shape() [0]);
     
-        // Mean categorical/binary cross-entropy loss over the batch
-        return -xt::sum(expected * xt::log(clipped_pred))() / divisor;
+        double loss = 0;
+
+        const double* p = predicted.data();
+        const double* y = expected.data();
+
+        for (std::size_t i = 0; i < predicted.size(); ++i) {
+            const double clipped = std::max(epsilon, std::min(1.0, p[i]));
+            loss -= y[i] * std::log(clipped);
+        }
+
+        return loss / divisor;
     }
 
 
@@ -270,11 +278,22 @@ public:
     xt::xarray<double> compute_gradient(const xt::xarray<double>& predicted, const xt::xarray<double>& expected) const override {
         assert_nonempty_same_shape_(predicted, expected);
 
-        auto clipped_pred = xt::clip(predicted, epsilon, 1.0 - epsilon);
-        double divisor = (batch_size_ == 0) ? 1.0 : static_cast<double>(predicted.shape() [0]);
-        
-        // Derivative of -expected * log(predicted) divided by batch size (or 1 if batch_size_ is 0)
-        return (-expected / clipped_pred) / divisor;
+        const double divisor = (batch_size_ == 0) ? 1.0 : static_cast<double>(predicted.shape() [0]);
+
+        xt::xarray<double> result = xt::empty<double>(predicted.shape());
+
+        const double* p = predicted.data();
+        const double* y = expected.data();
+        double* out = result.data();
+
+        for (std::size_t i = 0; i < predicted.size(); ++i) {
+            const double clipped =
+                std::max(epsilon, std::min(1.0 - epsilon, p[i]));
+
+            out[i] = -y[i] / clipped / divisor;
+        }
+
+        return result;
     }
 };
 
