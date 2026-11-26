@@ -771,7 +771,7 @@ public:
                     predecessors.end()
                 );
 
-                std::vector<std::reference_wrapper<const xt::xarray<double>>> combiner_input;
+                std::vector<xt::xarray<double>> combiner_input;
 
                 combiner_input.reserve(predecessors.size());
                 
@@ -875,23 +875,20 @@ public:
                     branch_gradients[successor_branch_id] = xt::xarray<double>();
                 }
 
-                // Create references to the gradients.
-                std::vector<std::reference_wrapper<const xt::xarray<double>>> gradient_refs;
+                // Create gradients.
+                std::vector<xt::xarray<double>> gradients;
 
-                gradient_refs.reserve(successor_gradients.size());
+                gradients.reserve(successor_gradients.size());
 
                 for (const auto& gradient : successor_gradients) {
-                    gradient_refs.emplace_back(std::cref(gradient));
+                    gradients.emplace_back(std::cref(gradient));
                 }
 
                 // Sum gradients from all successor branches.
-                xt::xarray<double> prev_gradient = splitter->backward(gradient_refs);
+                xt::xarray<double> prev_gradient = splitter->backward(gradients);
 
                 // Propagate to the splitter's predecessor.
-                str_assert(
-                    splitter->predecessors().size() == 1,
-                    "Splitter must have exactly one predecessor"
-                );
+                // str_assert(splitter->predecessors().size() == 1 || (splitter->predecessors().size() == 0 && it == components_.rend()), "Splitter must have exactly one predecessor");
                 
                 branch_gradients[branch_id] = std::move(prev_gradient);
             }

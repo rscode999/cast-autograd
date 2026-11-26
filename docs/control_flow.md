@@ -60,14 +60,14 @@ Returns the string "splitter ({branch count of this splitter object})".
 
 #### forward (multiple outputs)
 
-*Signature:* `virtual std::vector<std::vector<xt::xarray<double>>> forward(const xt::xarray<double>& input, bool tag)`
+*Signature:* `virtual std::vector<xt::xarray<double>> forward(const xt::xarray<double>& input, bool tag)`
 
 Returns `input` copied `branch_count()` times.
 
 **Parameters**
 
 * `input` (`const xt::xarray<double>&`): Vector(s) to copy across multiple outputs. Non-empty.
-* `tag` (`bool`): Unused; required to distinguish this method from the overridden method that returns `xt::xarray<double>`.
+* `tag` (`bool`): Not used; required to distinguish this method from the method that returns `xt::xarray<double>`.
 
 **Returns**
 
@@ -85,19 +85,29 @@ Throws `cast::not_implemented`. The method exists solely to implement a virtual 
 
 ---
 
-#### backward
+#### backward (multiple inputs)
 
-*Signature:* `xt::xarray<double> backward(const xt::xarray<double>& successor_gradient) override`
+*Signature:* `xt::xarray<double> backward(const std::vector<xt::xarray<double>>& successor_gradients)`
 
-Returns the empty tensor. Upon receiving the `branch_count()`-th input, returns the result of the splitter's backpropagation operation computed on all received inputs.
+Returns the element-wise sum of each element in `successor_gradients`.
 
 **Parameters**
 
-* `successor_gradient` (`xt::xarray<double>`): Single successor gradient. Size and shape of all its elements match those of the first given input received after this method returns a non-empty tensor.
+* `successor_gradients` (`std::vector<xt::xarray<double>>&`): Gradients from each of the splitter's successors. Non-empty, and shape of all its elements match those of the first element.
 
 **Returns**
 
-* `xt::xarray<double>`: Empty tensor, or backprop gradients if all inputs are received.
+* `xt::xarray<double>`: Backpropagation gradients of the given input.
+
+---
+
+#### backward (single output- DO NOT USE)
+
+*Signature:* `xt::xarray<double> backward(const xt::xarray<double>& unused) override`
+
+DO NOT USE THIS METHOD!
+
+Throws `cast::not_implemented`. The method exists solely to implement a virtual method and should not be used.
 
 
 ---
@@ -154,23 +164,29 @@ Returns the string "combiner ({branch indices combined} -> {branch of combiner})
 
 ### Methods
 
-#### forward
+#### forward (multiple inputs)
 
-*Signature:* `xt::xarray<double>forward(const xt::xarray<double>& predecessor_outputs) override`
+*Signature:* `xt::xarray<double> forward(const std::vector<xt::xarray<double>>& predecessor_outputs)`
 
-Returns the empty vector. Upon receiving the `branch_indices().size()`-th input, returns the element-wise sum of all inputs given.
+Returns the element-wise sum of all inputs in `predecessor_outputs`.
 
 **Parameters**
 
-* `predecessor_outputs` (`const xt::xarray<double>&`): List of layer outputs. Has the same size and matching corresponding shapes as the first input given
+* `predecessor_outputs` (`const std::vector<xt::xarray<double>>&`): List of layer outputs. Non-empty, and all elements have the same dimensions.
 
 **Returns**
 
-* `std::vector<xt::xarray<double>>`: Sum of all inputs, or an empty vector if not all branches are combined.
+* `xt::xarray<double>`: Sum of all inputs.
 
-**Exceptions**
+---
 
-* `std::runtime_error` (via `str_assert`): Thrown if inputs are empty or if shapes do not match.
+#### forward (single input- DO NOT USE)
+
+*Signature:* `xt::xarray<double> forward(const xt::xarray<double>& unused) override`
+
+DO NOT USE THIS METHOD!
+
+Throws `cast::not_implemented`. The method exists solely to implement a virtual method and should not be used.
 
 ---
 
@@ -183,7 +199,7 @@ Returns `prev_gradient` copied `branch_indices().size()` times.
 **Parameters**
 
 * `prev_gradient` (`const xt::xarray<double>&`): Tensor(s) to copy across multiple outputs. Non-empty.
-* `tag` (`bool`): Unused; required to distinguish this method from the overridden method that returns `xt::xarray<double>`.
+* `tag` (`bool`): Not used; required to distinguish this method from the method that returns `xt::xarray<double>`.
 
 **Returns**
 

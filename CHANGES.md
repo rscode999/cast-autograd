@@ -1,7 +1,7 @@
 # Change Log
 
 ## 0.11.1
-*In Progress*
+*26 November 2026*
 
 - Added more performant operations
     - Activation functions use XTensor lazy evaluation through `xt::noalias`

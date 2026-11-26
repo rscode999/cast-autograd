@@ -4,7 +4,6 @@
 
 #include <cassert>
 #include <cstdint>
-#include <immintrin.h>
 #include <memory>
 #include <unordered_map>
 
@@ -17,6 +16,9 @@ using namespace std;
 using namespace xt;
 
 
+/**
+* If true, tests print extra information
+*/
 const bool DEBUG = false;
 
 
@@ -24,6 +26,10 @@ const bool DEBUG = false;
  * Tests linear 1d layer's forward operation with batches
  */
 void test_linear1d_forward() {
+    if(DEBUG) {
+        cout << "Testing linear 1d forward operation" << endl;
+    }
+
     Linear1d l(2, 4);
     
     l.parameters() [0] = {{1, 2}, {3, 4}, {5, 6}, {7, 8}};
@@ -37,6 +43,10 @@ void test_linear1d_forward() {
 * Tests linear 1d's forward operation with 1d inputs and 1d outputs
 */
 void test_linear1d_forward_1to1() {
+    if(DEBUG) {
+        cout << "Testing linear 1d forward operation with 1d inputs and 1d outputs" << endl;
+    }
+
     Linear1d l2(1, 1);
     l2.parameters() [0] (0,0) = 2;
     l2.parameters() [1] = xt::xarray<double>{-1};
@@ -64,6 +74,10 @@ void test_linear1d_forward_1to1() {
 * Tests Mean Squared Error and Cross Entropy loss, with and without batches
 */
 void test_mse_crossentropy() {
+    if(DEBUG) {
+        cout << "Testing MSE and cross-entropy loss with and without batches only" << endl;
+    }
+
     shared_ptr<MeanSquaredError> mse = make_shared<MeanSquaredError>();
     shared_ptr<CrossEntropy> ce = make_shared<CrossEntropy>();
 
@@ -333,6 +347,10 @@ void test_train_batch_2() {
 * Builds a classifier with multiple branches, then verifies the branching structure.
 */
 void test_create_branch() {
+    if(DEBUG) {
+        cout << "Testing network creation and verification with branching structure" << endl;
+    }
+
     Network net;
     std::shared_ptr<MeanSquaredError> loss_calc = make_shared<MeanSquaredError>();
     net.set_loss_calculator(loss_calc);
@@ -450,6 +468,10 @@ void test_create_branch() {
 * Creates a network with a splitter first
 */
 void test_create_branch_splitter_first() {
+    if(DEBUG) {
+        cout << "Testing network creation that starts with a splitter" << endl;
+    }
+
     Network net;
     net.add_splitter(3);
 
@@ -497,6 +519,10 @@ void test_create_branch_splitter_first() {
 * Tests the very weird case where a network consists only of control flow components
 */
 void test_create_control_flow_only() {
+    if(DEBUG) {
+        cout << "Testing network creation with control flow components only" << endl;
+    }
+
     Network net;
     net.add_splitter(2);
     net.add_splitter(2);
@@ -545,97 +571,85 @@ void test_create_control_flow_only() {
 
 
 /**
-* Tests the forward and backward methods of a splitter.
+* Tests the forward method of a splitter, and backward method of a combiner (both methods do the same thing).
 */
-void test_splitter_forward_backward() {
-    return; //TODO!
-
-    //Forward: Should duplicate its inputs
-    shared_ptr<Splitter> s1 = make_shared<Splitter>(2);
-    shared_ptr<Splitter> s2 = make_shared<Splitter>(3);
-    xarray<double> in = {1, 2, 3};
-
-    vector<xarray<double>> out1 = s1->forward(in, true);
-    vector<xarray<double>> out2 = s2->forward(in, true);
-    assert_equals((size_t)2, out1.size());
-    for(xarray<double> o : out1) {
-        assert_array_equals(in, o);
-    }
-    assert_equals((size_t)3, out2.size());
-    for(xarray<double> o : out2) {
-        assert_array_equals(in, o);
+void test_splitter_forward_combiner_backward() {
+    if(DEBUG) {
+        cout << "Testing splitter backward and combiner forward methods" << endl;
     }
 
+    Splitter s3(3);
+    Combiner c3({1,2}); // 3 branches -> 1 branch
 
-    // shared_ptr<Splitter> s3 = make_shared<Splitter>(3);
 
-    // //Backward: should give sum of inputs
-    // vector<reference_wrapper<xarray<double>>> inputs = {
-    //     xarray<double>{0, 1, 2, 3}, //1
-    //     xarray<double>{-1, -1, -1, -1}, //2
-    //     xarray<double>{0, 1, 2, 3}, //3
-    // };
+    std::vector<xarray<double>> inputs = {
+        xarray<double>(
+            xt::nested_initializer_list_t<double, 1>{1., 2., 3.}
+        ),
+        xarray<double>(
+            xt::nested_initializer_list_t<double, 2>{
+                {1., 2.}, {3., 4.}, {5., 6.}
+            }
+        ),
+        xarray<double>(
+            xt::nested_initializer_list_t<double, 2>{
+                {1.}, {2.}, {3.}
+            }
+        ),
+        xarray<double>(
+            xt::nested_initializer_list_t<double, 1>{1.}
+        )
+    };
 
-    // xarray<double> out3 = s3->backward(inputs);
+    for(xarray<double> input : inputs) {
+        std::vector<xt::xarray<double>> out = s3.forward(input, true);
+
+        //Length 3, all inputs match
+        assert_equals(3, (int)out.size());
+        for(xarray<double> o : out) {
+            assert_array_equals(input, o);
+        }
+
+
+        out = c3.backward(input, true);
+
+        //Length 3, all inputs match.
+        assert_equals(3, (int)out.size());
+        for(xarray<double> o : out) {
+            assert_array_equals(input, o);
+        }
+    }
 }
 
 
 
-void test_combiner_forward_backward() {
-    return; //TODO!
+void test_combiner_forward_splitter_backward() {
+    if(DEBUG) {
+        cout << "Testing combiner forward and splitter backward methods" << endl;
+    }
 
-    shared_ptr<Combiner> c1 = make_shared<Combiner>(initializer_list<int32_t>{1});
-    shared_ptr<Combiner> c2 = make_shared<Combiner>(initializer_list<int32_t>{1, 2});
+    Splitter s2(2);
+    Combiner c2({1}); // 2 branches -> 1 branch
 
-    //Forward: should give output after 2 (c1) or 3 (c2) inputs
-    vector<xarray<double>> inputs = {
-        xarray<double>{0, 1, 2, 3}, //1
-        xarray<double>{-1, -1, -1, -1}, //2
-        xarray<double>{0, 1, 2, 3}, //3
-        xarray<double>{5, 5, 5, 0} //4
+    vector<  vector<xarray<double>>  > inputs = {
+        vector<xarray<double>> { xarray<double>{1}, xarray<double>{2}},
+        vector<xarray<double>> { xarray<double>{1,2}, xarray<double>{3, 4} },
+        vector<xarray<double>> { xarray<double>{{1,2},{3,4},{5,6}}, xarray<double> {{6,5},{4,3},{2,1}} } 
     };
 
-    for (int i = 1; i <= inputs.size(); i++) {
-        xarray<double> out1 = c1->forward(inputs[i-1]);
-        xarray<double> out2 = c2->forward(inputs[i-1]);
-
-        //on odd-numbered inputs, c1 should produce an empty output
-        if(i % 2 == 1) {
-            assert_true(out1.size() == 0, "Combiner merging 1 other branch should produce empty outputs on odd-numbered inputs");
-        }
-        //input 2 should be the sum of inputs 1 and 2
-        else if(i == 2) {
-            assert_equals(xarray<double> {-1, 0, 1, 2}, out1);
-        }
-        //input 4 should be the sum of inputs 3 and 4
-        else if(i == 4) {
-            assert_equals(xarray<double> {5, 6, 7, 3}, out1);
-        }
-
-        //if on input 3, c2 should produce an output. otherwise, should be empty
-        if(i == 3) {
-            assert_array_equals(xarray<double> {-1, 1, 3, 5}, out2);
-        }
-        else {
-            assert_true(out2.size() == 0, "Combiner merging 2 other branches should produce empty outputs except on output 3");
-        }
-    }
+    vector<xarray<double>> expected_outputs = {
+        {3},
+        {4, 6},
+        {{7, 7}, {7, 7}, {7, 7}}
+    };
 
 
-    //Backward: Should duplicate its inputs
-    shared_ptr<Combiner> c3 = make_shared<Combiner>(initializer_list<int32_t>{1});
-    shared_ptr<Combiner> c4 = make_shared<Combiner>(initializer_list<int32_t>{1, 10});
-    xarray<double> in = {1, 2, 3};
+    for (size_t i = 0; i < inputs.size(); i++) {
+        xarray<double> output = c2.forward(inputs[i]);
+        assert_array_equals(expected_outputs[i], output);
 
-    vector<xarray<double>> out3 = c3->backward(in, true);
-    vector<xarray<double>> out4 = c4->backward(in, true);
-    assert_equals((size_t)2, out3.size());
-    for(xarray<double> o : out3) {
-        assert_array_equals(in, o);
-    }
-    assert_equals((size_t)3, out4.size());
-    for(xarray<double> o : out3) {
-        assert_array_equals(in, o);
+        output = s2.backward(inputs[i]);
+        assert_array_equals(expected_outputs[i], output);
     }
 }   
 
@@ -725,6 +739,9 @@ void test_train_branch() {
 * Uses cross-entropy and softmax, while using the copy constructor to make another network with a nonzero batch size.
 */
 void test_ce_sm_batch_assign() {
+    if(DEBUG) {
+        cout << "Training cross-entropy and softmax on binary to one hot dataset" << endl;
+    }
 
     const int32_t N_INPUTS = 4;
     const int32_t N_OUTPUTS = pow(2, N_INPUTS);
@@ -936,19 +953,19 @@ void speed_test() {
 
 
 int main() {
-    // test_linear1d_forward();
-    // test_linear1d_forward_1to1();
-    // test_mse_crossentropy();
-    // test_train_no_batch();
-    // test_train_batch_1();
-    // test_train_batch_2();
-    // test_create_branch();
-    // test_create_branch_splitter_first();
-    // test_create_control_flow_only();
-    // test_splitter_forward_backward();
-    // test_combiner_forward_backward();
-    // test_train_branch();
-    // test_ce_sm_batch_assign();
-    // // speed_test();
-    // cout << "Tests passed" << endl;
+    test_linear1d_forward();
+    test_linear1d_forward_1to1();
+    test_mse_crossentropy();
+    test_train_no_batch();
+    test_train_batch_1();
+    test_train_batch_2();
+    test_create_branch();
+    test_create_branch_splitter_first();
+    test_create_control_flow_only();
+    test_splitter_forward_combiner_backward();
+    test_combiner_forward_splitter_backward();
+    test_train_branch();
+    test_ce_sm_batch_assign();
+    // speed_test();
+    cout << "Tests passed" << endl;
 }

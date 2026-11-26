@@ -95,12 +95,11 @@ public:
 
 
     /**
-    * Returns  the result of the splitter's backpropagation operation
-    * computed on all received inputs.
+    * Returns the element-wise sum of all ements in `successor_gradients`.
     * @param successor_gradients single successor gradient. Size and shape of all its elements match those of the first given input
-    * @return empty vector, or backprop gradients (if all inputs are received)
+    * @return result of the splitter's backpropagation operation computed on all received inputs
     */
-    xt::xarray<double> backward(const std::vector<std::reference_wrapper<const xt::xarray<double>>>& successor_gradients) {
+    xt::xarray<double> backward(const std::vector<xt::xarray<double>>& successor_gradients) {
         str_assert(
             !successor_gradients.empty(),
             "Splitter requires at least one output gradient"
@@ -108,11 +107,11 @@ public:
 
         xt::xarray<double> result =
             xt::zeros<double>(
-                successor_gradients[0].get().shape()
+                successor_gradients[0].shape()
             );
 
         for (const auto& gradient : successor_gradients) {
-            result += gradient.get();
+            result += gradient;
         }
 
         return result;
@@ -228,39 +227,31 @@ public:
     * @param predecessor_outputs layer outputs from all predecessors
     * @return sum of all inputs
     */
-    xt::xarray<double> forward(const std::vector<std::reference_wrapper<const xt::xarray<double>>>& predecessor_outputs) {
+    xt::xarray<double> forward(const std::vector<xt::xarray<double>>& predecessor_outputs) {
         str_assert(
             predecessor_outputs.size() == branch_indices_.size() + 1,
             "Incorrect number of combiner inputs"
         );
         str_assert(
-            !predecessor_outputs.empty() && predecessor_outputs[0].get().size() > 0,
+            !predecessor_outputs.empty() && predecessor_outputs[0].size() > 0,
             "Combiner requires non-empty inputs"
         );
 
         assert_no_self_assign_();
 
-        xt::xarray<double> sum = xt::zeros<double>(predecessor_outputs[0].get().shape());
+        xt::xarray<double> sum = xt::zeros<double>(predecessor_outputs[0].shape());
 
         for (const auto& input : predecessor_outputs) {
             str_assert(
-                input.get().shape() == predecessor_outputs[0].get().shape(),
+                input.shape() == predecessor_outputs[0].shape(),
                 "Combiner input shapes must match"
             );
 
-            sum += input.get();
+            sum += input;
         }
 
         return sum;
     }
-
-    /**
-    * DO NOT USE!
-    */
-    xt::xarray<double> forward(const xt::xarray<double>& unused) override {
-        throw not_implemented("Do not use the single-input forward method on a Combiner");
-    }
-
 
     /**
     * Returns `prev_gradient` copied `branch_indices().size()` times.
@@ -286,6 +277,13 @@ public:
         return backprop_outputs;
     }
 
+
+    /**
+    * DO NOT USE! Throws `cast::not_implemented`.
+    */
+    xt::xarray<double> forward(const xt::xarray<double>& unused) override {
+        throw not_implemented("Do not use the single-input forward method on a Combiner");
+    }
 
     /**
     * DO NOT USE! Throws `cast::not_implemented`. The method exists solely to implement a virtual method.
